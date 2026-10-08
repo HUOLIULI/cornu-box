@@ -12,11 +12,12 @@ object SourceBootstrap {
           "bookSourceUrl": "https://example.com",
           "searchUrl": "https://example.com/search/{{key}}?page={{page}}",
           "ruleSearch": {
-            "id": "$.data.books[0].id",
-            "name": "$.data.books[0].title",
-            "author": "$.data.books[0].writer",
-            "coverUrl": "$.data.books[0].cover",
-            "bookUrl": "$.data.books[0].id@/novel/{{result}}"
+            "list": "$.data.books[0]",
+            "id": "id",
+            "name": "title",
+            "author": "writer",
+            "coverUrl": "cover",
+            "bookUrl": "id@/novel/{{result}}"
           },
           "ruleToc": {
             "chapterList": "//div#list dd a",
@@ -38,6 +39,20 @@ object SourceBootstrap {
             { "name": "演示直播", "type": 0, "url": "https://example.com/live/demo.m3u8" }
           ],
           "flags": ["demo"]
+        }
+    """.trimIndent()
+
+    /**
+     * A sample TVBox search response body for tests and demos: the result is
+     * wrapped in a `list` array with TVBox-style `vod_*` keys.
+     */
+    fun sampleTvBoxSearchListJson(): String = """
+        {
+          "page": 1,
+          "list": [
+            { "vod_id": "1", "vod_name": "演示剧集", "vod_pic": "https://picsum.photos/seed/v1/400", "type": "电视剧" },
+            { "vod_id": "2", "vod_name": "演示电影", "vod_pic": "https://picsum.photos/seed/v2/400", "type": "电影" }
+          ]
         }
     """.trimIndent()
 

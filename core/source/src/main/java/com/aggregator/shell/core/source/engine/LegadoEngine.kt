@@ -1,13 +1,18 @@
 package com.aggregator.shell.core.source.engine
 
+import com.aggregator.shell.core.common.AppLog
+import com.aggregator.shell.core.common.NoOpLog
+import com.aggregator.shell.core.data.local.BookSourceDao
 import com.aggregator.shell.core.source.api.BookResult
 import com.aggregator.shell.core.source.api.Chapter
 import com.aggregator.shell.core.source.api.ReaderEngine
 import com.aggregator.shell.core.source.parse.RuleParser
 import com.aggregator.shell.core.source.sandbox.JsSandboxExecutor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.json.JSONObject
 
 /**
  * Legado-compatible book source engine.
@@ -16,63 +21,102 @@ import okhttp3.OkHttpClient
  * blocks whose values are parsed by [RuleParser]. The engine fetches the
  * search / TOC URL described by the source, applies the JSONPath rules, and
  * returns structured results.
+ *
+ * Source payload resolution: an optional [bookSourceDao] supplies user-imported
+ * sources from Room; when no enabled source is present, the built-in demo
+ * bootstrap is used so the shell runs out of the box.
  */
 class LegadoEngine(
     private val client: OkHttpClient,
-    private val jsExecutor: JsSandboxExecutor
+    private val jsExecutor: JsSandboxExecutor,
+    private val bookSourceDao: BookSourceDao? = null,
+    private val log: AppLog = NoOpLog
 ) : ReaderEngine {
 
     private val parser = RuleParser(jsExecutor)
 
     override suspend fun search(keyword: String, page: Int): List<BookResult> {
-        val sourceJson = fetchBookSourceJson() ?: return emptyList()
-        val source = org.json.JSONObject(sourceJson)
-        val rule = source.getJSONObject("ruleSearch")
+        val sourceJson = resolveSourceJson() ?: run {
+            log.w(TAG, "no book source available (Room empty + bootstrap failed)")
+            return emptyList()
+        }
+        val source = try { JSONObject(sourceJson) } catch (e: Exception) {
+            log.e(TAG, "book source JSON invalid", e)
+            return emptyList()
+        }
+        val ruleSearch = source.optJSONObject("ruleSearch") ?: return emptyList()
         val searchUrl = source.optString("searchUrl")
+        val url = searchUrl
+            .replace("{{key}}", keyword)
+            .replace("{{page}}", page.toString())
 
-        val body = get(searchUrl.replace("{{key}}", keyword).replace("{{page}}", page.toString()))
-        return (0..3).mapNotNull { i ->
+        val body = get(url)
+        if (body.isBlank()) {
+            log.w(TAG, "search returned empty body: $url")
+            return emptyList()
+        }
+
+        // The list rule is written against a single element, e.g. `$.data.list[0]`.
+        // `list(body, listRule)` returns the raw element values; each element is then
+        // re-applied with per-field rules.
+        val listRule = ruleSearch.optString("list", "$.data.list[0]")
+        val elements = parser.list(body, listRule)
+        if (elements.isEmpty()) {
+            log.w(TAG, "no search results matched list rule: $listRule")
+        }
+        return elements.mapNotNull { element ->
             try {
-                val items = body
                 BookResult(
-                    id = parser.single(items, rule.optString("id")).ifEmpty { "book-$i" },
-                    name = parser.single(items, rule.optString("name")),
-                    author = parser.single(items, rule.optString("author")),
-                    coverUrl = parser.single(items, rule.optString("coverUrl")),
-                    bookUrl = parser.single(items, rule.optString("bookUrl")),
+                    id = parser.single(element, ruleSearch.optString("id")).ifEmpty { "book-${elements.indexOf(element)}" },
+                    name = parser.single(element, ruleSearch.optString("name")),
+                    author = parser.single(element, ruleSearch.optString("author")),
+                    coverUrl = parser.single(element, ruleSearch.optString("coverUrl")),
+                    bookUrl = parser.single(element, ruleSearch.optString("bookUrl")),
                     sourceName = source.optString("bookSourceName")
                 )
-            } catch (e: Exception) { null }
+            } catch (e: Exception) {
+                log.w(TAG, "failed to parse search element", e)
+                null
+            }
         }
     }
 
     override suspend fun getToc(bookId: String): List<Chapter> {
-        val sourceJson = fetchBookSourceJson() ?: return emptyList()
-        val source = org.json.JSONObject(sourceJson)
-        val rule = source.getJSONObject("ruleToc")
-        val bookUrl = source.optString("searchUrl").let {
-            // For shell demo, bookId is expected to be the full URL.
-            bookId
+        val sourceJson = resolveSourceJson() ?: return emptyList()
+        val source = try { JSONObject(sourceJson) } catch (e: Exception) {
+            log.e(TAG, "book source JSON invalid", e)
+            return emptyList()
         }
-        val body = get(bookUrl)
-        val chapterItems = (0..50).mapIndexedNotNull { i, _ ->
+        val ruleToc = source.optJSONObject("ruleToc") ?: return emptyList()
+        // For the shell, bookId is expected to be the full chapter-list URL.
+        val body = get(bookId)
+        if (body.isBlank()) {
+            log.w(TAG, "TOC returned empty body: $bookId")
+            return emptyList()
+        }
+        val listRule = ruleToc.optString("chapterList")
+        val elements = if (listRule.isNotBlank()) parser.list(body, listRule) else emptyList()
+        return elements.mapIndexedNotNull { i, element ->
             try {
                 Chapter(
                     index = i,
-                    title = parser.single(body, rule.optString("chapterName")),
-                    url = parser.single(body, rule.optString("chapterUrl"))
+                    title = parser.single(element, ruleToc.optString("chapterName")),
+                    url = parser.single(element, ruleToc.optString("chapterUrl"))
                 )
-            } catch (e: Exception) { null }
+            } catch (e: Exception) {
+                log.w(TAG, "failed to parse chapter $i", e)
+                null
+            }
         }
-        return chapterItems
     }
 
     override suspend fun getContent(chapterId: String): String {
-        val sourceJson = fetchBookSourceJson() ?: return ""
-        val source = org.json.JSONObject(sourceJson)
-        val rule = source.optJSONObject("ruleContent") ?: return get(chapterId)
+        val sourceJson = resolveSourceJson()
+        val source = sourceJson?.let { runCatching { JSONObject(it) }.getOrNull() }
+        val ruleContent = source?.optJSONObject("ruleContent")
         val body = get(chapterId)
-        return parser.single(body, rule.optString("content")).let {
+        if (ruleContent == null || body.isBlank()) return body
+        return parser.single(body, ruleContent.optString("content")).let {
             if (it.isBlank()) body else it
         }
     }
@@ -85,9 +129,24 @@ class LegadoEngine(
             ).execute().use { it.body?.string() ?: "" }
         }
 
-    private suspend fun fetchBookSourceJson(): String? =
-        // In full version: look up from Room book_sources. For shell demo: assets.
-        try {
-            com.aggregator.shell.core.source.engine.SourceBootstrap.defaultLegadoSourceJson()
-        } catch (e: Exception) { null }
+    /**
+     * Resolve the source JSON: prefer the first enabled source in Room; fall back
+     * to the built-in demo bootstrap when Room is empty.
+     */
+    private suspend fun resolveSourceJson(): String? {
+        bookSourceDao?.let { dao ->
+            val list = runCatching { dao.all().first() }.getOrDefault(emptyList())
+            val pick = list.firstOrNull { it.enabled && it.rawJson.isNotBlank() }
+            if (pick != null) {
+                log.i(TAG, "using Room book source: ${pick.name}")
+                return pick.rawJson
+            }
+        }
+        log.i(TAG, "falling back to built-in demo book source")
+        return runCatching { SourceBootstrap.defaultLegadoSourceJson() }.getOrNull()
+    }
+
+    companion object {
+        const val TAG = "LegadoEngine"
+    }
 }

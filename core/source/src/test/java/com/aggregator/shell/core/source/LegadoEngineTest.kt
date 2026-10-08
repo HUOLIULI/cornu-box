@@ -24,6 +24,18 @@ class LegadoEngineTest {
     }
 
     @Test
+    fun `rule parser extracts every element of a json list`() {
+        val parser = RuleParser(RhinoJsExecutor())
+        val json = """{"data":{"list":[{"id":"1","title":"a"},{"id":"2","title":"b"}]}}"""
+        val elements = runBlocking { parser.list(json, "$.data.list[0]") }
+        assertEquals(2, elements.size)
+        val first = runBlocking { parser.single(elements[0], "id") }
+        val second = runBlocking { parser.single(elements[1], "id") }
+        assertEquals("1", first)
+        assertEquals("2", second)
+    }
+
+    @Test
     fun `rule parser regex extracts token`() {
         val parser = RuleParser(RhinoJsExecutor())
         val result = runBlocking { parser.single("abc-123-def", ":\\d+") }

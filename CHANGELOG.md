@@ -1,5 +1,34 @@
 # MediaShell 更新日志
 
+## v1.1.0 (2026-10-08)
+
+代码逻辑梳理 + UI 全方位完善，引擎接真实数据通路，三 feature 页面统一体验。
+
+### 引擎逻辑修复
+- **LegadoEngine 列表提取**：原 `search` 死循环生成 4 条相同行、`getToc` 死循环 50 条相同章节。改为 `RuleParser.list` 按 `list` 规则提取数组各元素，逐元素套字段规则，去重彻底。
+- **TvBoxEngine 列表解析**：原 `search` 把整个响应当单对象只读 1 条。改为 `parseVideoList` 识别 `list` / `videoList` / `data` 多种包装，逐条映射 `vod_*` 字段；`parseEpisodes` 同时支持 `eps[]` 与 `episodes{}` 两种集数结构。
+- **LxMusicEngine 去硬编码**：原 `search`/`getMusicUrl`/`getLyric` 全部写死演示数据。改为经 Rhino 沙箱执行用户导入的 LX 源脚本，失败/超时无缝回退内置 demo。
+- **EpgParser 单行标题**：原状态机对 `<title>foo</title>` 单行写法丢失内容。新增「同行开闭」预读分支，单行/多行均正确累积。
+
+### 数据通路接通 Room
+- 三引擎经 `SourceModule` 注入对应 Room DAO（`BookSourceDao` / `VideoSourceDao`+`LiveSourceDao` / `MusicSourceDao`），运行时优先读用户导入源表，空表回退内置 demo，无循环依赖（组合式注入）。
+- `TvBoxEngine.resolveLiveUrls` 读 `live_sources` 表取 IPTV 地址。
+
+### 日志体系
+- 新增 `AppLog` 抽象 + `NoOpLog`（core:common），引擎在「源解析失败 / 空结果 / 异常吞没」处按级（i/w/e）记诊断，便于线上定位而不强依赖 `android.util.Log`。
+- `RuleParser` 新增 JSON 字段直取快速路径：数组元素是 JSON 对象时，裸字段名（`id`/`title`）直接命中，避免误走 CSS 解析。
+
+### UI 全方位升级
+- **影视**：顶部搜索框（输入 + 回车/按钮触发）；点播/短剧/IPTV 三 Tab；卡片加封面图（Coil `AsyncImage`，9:16 短剧 + 横版列表）；加载/空态/错误重试三态齐备。
+- **阅读**：搜索框 + 书籍卡片（方形封面 + 作者 + 源名）；空态提示导入书源；错误重试。
+- **音乐**：搜索框 + 歌曲卡片（圆形封面 + 歌手/专辑）；空态/重试。
+- **设置**：`Scaffold` 顶部返回导航 + 模块三段选择器（影视/阅读/音乐）；「现有订阅」列表卡片支持删除；AI 制源面板；底部留白统一。
+- **导航**：三个 feature Activity 顶部加 `ArrowBack` 返回图标，统一 Material3 图标/间距/圆角（14dp 卡片）。
+
+### 构建与验证
+- 全模块 `compileDebugKotlin` + `:app:assembleDebug` 通过
+- `:core:source:testDebugUnitTest` 4/4 通过（JSONPath / 列表提取 / 正则 / JS 超时）
+
 ## v1.0.1 (2026-10-08)
 
 修复 APK 安装闪退，补全核心功能链路。

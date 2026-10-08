@@ -1,5 +1,9 @@
 package com.aggregator.shell.core.source.di
 
+import com.aggregator.shell.core.data.local.BookSourceDao
+import com.aggregator.shell.core.data.local.LiveSourceDao
+import com.aggregator.shell.core.data.local.MusicSourceDao
+import com.aggregator.shell.core.data.local.VideoSourceDao
 import com.aggregator.shell.core.source.api.MusicEngine
 import com.aggregator.shell.core.source.api.ReaderEngine
 import com.aggregator.shell.core.source.api.VideoEngine
@@ -23,6 +27,9 @@ import okhttp3.OkHttpClient
  * capability interfaces ([ReaderEngine], [VideoEngine], [MusicEngine]); the
  * concrete engines are provided here so they can be swapped without touching
  * feature code.
+ *
+ * The engines receive the Room source-table DAOs so they resolve user-imported
+ * sources; each falls back to the built-in demo when the table is empty.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -38,16 +45,30 @@ object SourceModule {
 
     @Provides
     @Singleton
-    fun provideReaderEngine(client: OkHttpClient, js: JsSandboxExecutor): ReaderEngine =
-        LegadoEngine(client, js)
+    fun provideReaderEngine(
+        client: OkHttpClient,
+        js: JsSandboxExecutor,
+        bookSourceDao: BookSourceDao
+    ): ReaderEngine =
+        LegadoEngine(client, js, bookSourceDao)
 
     @Provides
     @Singleton
-    fun provideVideoEngine(client: OkHttpClient, js: JsSandboxExecutor, py: PythonRuntime): VideoEngine =
-        TvBoxEngine(client, js, py)
+    fun provideVideoEngine(
+        client: OkHttpClient,
+        js: JsSandboxExecutor,
+        py: PythonRuntime,
+        videoSourceDao: VideoSourceDao,
+        liveSourceDao: LiveSourceDao
+    ): VideoEngine =
+        TvBoxEngine(client, js, py, videoSourceDao, liveSourceDao)
 
     @Provides
     @Singleton
-    fun provideMusicEngine(client: OkHttpClient, js: JsSandboxExecutor): MusicEngine =
-        LxMusicEngine(client, js)
+    fun provideMusicEngine(
+        client: OkHttpClient,
+        js: JsSandboxExecutor,
+        musicSourceDao: MusicSourceDao
+    ): MusicEngine =
+        LxMusicEngine(client, js, musicSourceDao)
 }
