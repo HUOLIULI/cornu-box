@@ -24,6 +24,7 @@ dependencies {
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

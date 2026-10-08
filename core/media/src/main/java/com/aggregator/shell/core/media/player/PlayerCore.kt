@@ -5,6 +5,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
 import com.aggregator.shell.core.common.AppException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -34,11 +35,18 @@ interface PlayerCore {
     fun pause()
     fun resume()
     fun release()
+
+    /** 将 ExoPlayer 输出绑定到 PlayerView（视频画面渲染入口）。 */
+    fun attachPlayerView(view: PlayerView)
+
+    /** 解除绑定。 */
+    fun detachPlayerView()
 }
 
 class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
 
     private var player: ExoPlayer? = null
+    private var pendingView: PlayerView? = null
     private var current: PlayMediaItem? = null
     private var retryCount = 0
     private var retryJob: Job? = null
@@ -47,14 +55,34 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
 
     override fun initialize(context: Context) {
         if (player == null) {
-            player = ExoPlayer.Builder(context).build()
-            player?.addListener(object : Player.Listener {
-                override fun onPlayerError(error: PlaybackException) {
-                    _state.value = PlayerState.Error
-                    scheduleRetry()
-                }
-            })
+            player = ExoPlayer.Builder(context).build().also { p ->
+                p.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        _state.value = PlayerState.Error
+                        scheduleRetry()
+                    }
+                })
+            }
+            // 若 PlayerView 先于初始化挂载，在此回填输出
+            pendingView?.let { view ->
+                player?.let { view.player = it }
+                pendingView = null
+            }
         }
+    }
+
+    override fun attachPlayerView(view: PlayerView) {
+        val p = player
+        if (p != null) {
+            view.player = p
+            view.useController = true
+        } else {
+            pendingView = view
+        }
+    }
+
+    override fun detachPlayerView() {
+        pendingView = null
     }
 
     override suspend fun prepare(item: PlayMediaItem) {
@@ -73,6 +101,10 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun switchUrl(item: PlayMediaItem) {
+        if (item.url.isBlank() || !PlayUrlValidator.validate(item.url)) {
+            _state.value = PlayerState.Error
+            return
+        }
         current = item
         retryCount = 0
         player?.let {
@@ -94,8 +126,10 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun release() {
+        retryJob?.cancel()
         player?.release()
         player = null
+        pendingView = null
         _state.value = PlayerState.Idle
     }
 
