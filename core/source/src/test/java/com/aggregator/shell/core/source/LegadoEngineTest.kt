@@ -27,10 +27,12 @@ class LegadoEngineTest {
     fun `rule parser extracts every element of a json list`() {
         val parser = RuleParser(RhinoJsExecutor())
         val json = """{"data":{"list":[{"id":"1","title":"a"},{"id":"2","title":"b"}]}}"""
-        val elements = runBlocking { parser.list(json, "$.data.list[0]") }
+        // JSONPath 数组通配 [*] 取整个 list 的每个元素
+        val elements = runBlocking { parser.list(json, "$.data.list[*]") }
         assertEquals(2, elements.size)
-        val first = runBlocking { parser.single(elements[0], "id") }
-        val second = runBlocking { parser.single(elements[1], "id") }
+        // 逐元素取 JSON 字段用 JSONPath（$.id）
+        val first = runBlocking { parser.single(elements[0], "$.id") }
+        val second = runBlocking { parser.single(elements[1], "$.id") }
         assertEquals("1", first)
         assertEquals("2", second)
     }
