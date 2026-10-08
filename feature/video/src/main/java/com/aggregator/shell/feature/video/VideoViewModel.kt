@@ -2,6 +2,10 @@ package com.aggregator.shell.feature.video
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aggregator.shell.core.media.danmaku.DanmakuItem
+import com.aggregator.shell.core.media.danmaku.DanmakuSource
+import com.aggregator.shell.core.media.epg.EpgProgram
+import com.aggregator.shell.core.media.epg.EpgProvider
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.media.player.PlayerState
@@ -46,7 +50,9 @@ data class LiveChannel(val name: String, val url: String, val group: String, val
 @HiltViewModel
 class VideoViewModel @Inject constructor(
     private val videoEngine: VideoEngine,
-    private val playerCore: PlayerCore
+    private val playerCore: PlayerCore,
+    private val danmakuSource: DanmakuSource,
+    private val epgProvider: EpgProvider
 ) : ViewModel() {
 
     private val _play = MutableStateFlow(PlayUiState())
@@ -72,6 +78,15 @@ class VideoViewModel @Inject constructor(
 
     private val _loadingLives = MutableStateFlow(false)
     val loadingLives: StateFlow<Boolean> = _loadingLives.asStateFlow()
+
+    // ---------- 弹幕 / EPG ----------
+    /** 当前播放项的弹幕（由 [DanmakuSource] 按剧集生成，替换原静态 remember）。 */
+    private val _danmaku = MutableStateFlow(emptyList<DanmakuItem>())
+    val danmaku: StateFlow<List<DanmakuItem>> = _danmaku.asStateFlow()
+
+    /** 当前直播频道的 EPG 节目单。 */
+    private val _epg = MutableStateFlow(emptyList<EpgProgram>())
+    val epg: StateFlow<List<EpgProgram>> = _epg.asStateFlow()
 
     fun refresh(keyword: String = "演示") {
         viewModelScope.launch {
@@ -114,9 +129,10 @@ class VideoViewModel @Inject constructor(
         val item = PlayMediaItem(url = d.url, name = d.title, isHls = d.isHls)
         _play.value = _play.value.copy(current = item, error = null, loading = false)
         runCatching { playerCore.switchUrl(item) }
+        loadDanmaku(d.title, index + 1)
     }
 
-    /** IPTV 选台：切换直播流。 */
+    /** IPTV 选台：切换直播流 + 加载 EPG。 */
     fun switchLive(channel: LiveChannel) {
         val item = PlayMediaItem(
             url = channel.url,
@@ -125,6 +141,29 @@ class VideoViewModel @Inject constructor(
         )
         _play.value = _play.value.copy(current = item, error = null, loading = false)
         runCatching { playerCore.switchUrl(item) }
+        loadEpg(channel)
+    }
+
+    /** 点播切集后刷新弹幕。 */
+    fun onEpisodesSwitched(title: String, epIdx: Int) {
+        loadDanmaku(title, epIdx + 1)
+    }
+
+    /** 加载剧集弹幕（走 [DanmakuSource]，演示源按标题生成）。 */
+    private fun loadDanmaku(title: String, episode: Int) {
+        viewModelScope.launch {
+            val id = runCatching { danmakuSource.searchEpisode(title, episode) }.getOrNull()
+            _danmaku.value = if (id != null) {
+                runCatching { danmakuSource.loadDanmaku(id) }.getOrDefault(emptyList())
+            } else emptyList()
+        }
+    }
+
+    /** 加载直播频道 EPG。 */
+    private fun loadEpg(channel: LiveChannel) {
+        viewModelScope.launch {
+            _epg.value = runCatching { epgProvider.epgFor(channel.url) }.getOrDefault(emptyList())
+        }
     }
 
     /** 列表项被点击：拉详情 + 首集播放地址，进入播放页。 */
@@ -146,6 +185,7 @@ class VideoViewModel @Inject constructor(
                 episodeCount = detail.episodes.values.firstOrNull()?.size ?: 0,
                 error = if (media == null) "无可用播放地址" else null
             )
+            if (detail.title.isNotBlank()) loadDanmaku(detail.title, 1)
         }
     }
 
@@ -164,12 +204,15 @@ class VideoViewModel @Inject constructor(
             )
             _play.value = _play.value.copy(current = item, error = null)
             runCatching { playerCore.switchUrl(item) }
+            loadDanmaku(d.title, epIdx + 1)
         }
     }
 
     fun exitPlayback() {
         playerCore.release()
         _play.value = PlayUiState()
+        _danmaku.value = emptyList()
+        _epg.value = emptyList()
     }
 
     private fun mediaItemFor(
