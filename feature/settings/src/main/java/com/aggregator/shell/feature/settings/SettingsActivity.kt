@@ -65,10 +65,15 @@ class SettingsActivity : ComponentActivity() {
         // LLM 配置：从 DataStore 回填
         var baseUrl by remember { mutableStateOf("") }
         var apiKey by remember { mutableStateOf("") }
+        // 弹幕源配置：从 DataStore 回填
+        var danmakuUrl by remember { mutableStateOf("") }
+        var danmakuKey by remember { mutableStateOf("") }
         LaunchedEffect(Unit) {
             val prefs = context.appDataStore.data.first()
             baseUrl = prefs[KEY_BASE_URL] ?: ""
             apiKey = prefs[KEY_API_KEY] ?: ""
+            danmakuUrl = prefs[KEY_DANMAKU_BASE_URL] ?: ""
+            danmakuKey = prefs[KEY_DANMAKU_API_KEY] ?: ""
         }
 
         Column(
@@ -175,13 +180,49 @@ class SettingsActivity : ComponentActivity() {
             }
 
             Spacer(Modifier.height(16.dp))
+            Text("弹幕源", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "配置真实弹幕 API（如 DanDanPlay 风格）。仅保存在本机 DataStore，" +
+                        "应用不内置/不读取任何平台凭据；留空则使用内置演示弹幕。",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = danmakuUrl, onValueChange = { danmakuUrl = it },
+                label = { Text("弹幕 API Base URL（可选）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = danmakuKey,
+                onValueChange = { danmakuKey = it },
+                label = { Text("弹幕 API Key（可选，仅保存在本机）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    scope.launch {
+                        context.appDataStore.edit { p ->
+                            p[KEY_DANMAKU_BASE_URL] = danmakuUrl.trim()
+                            p[KEY_DANMAKU_API_KEY] = danmakuKey.trim()
+                        }
+                        msg = "弹幕源配置已保存"
+                    }
+                }) { Text("保存弹幕源") }
+            }
+
+            Spacer(Modifier.height(16.dp))
             Text("关于", style = MaterialTheme.typography.titleLarge)
-            Text("MediaShell v1.0.0 · 壳子 APK · 不内置任何内容源", style = MaterialTheme.typography.bodyMedium)
+            Text("MediaShell v1.5.0 · 壳子 APK · 不内置任何内容源", style = MaterialTheme.typography.bodyMedium)
         }
     }
 
     companion object {
         private val KEY_BASE_URL = stringPreferencesKey("llm_base_url")
         private val KEY_API_KEY = stringPreferencesKey("llm_api_key")
+        private val KEY_DANMAKU_BASE_URL = stringPreferencesKey("danmaku_base_url")
+        private val KEY_DANMAKU_API_KEY = stringPreferencesKey("danmaku_api_key")
     }
 }
