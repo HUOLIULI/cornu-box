@@ -1,4 +1,4 @@
-package com.aggregator.shell.core.data.local
+package com.aggregator.shell.core.data.local.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity

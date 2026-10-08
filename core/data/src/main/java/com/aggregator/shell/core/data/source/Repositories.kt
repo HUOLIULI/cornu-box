@@ -11,7 +11,6 @@ import com.aggregator.shell.core.data.local.LiveSourceDao
 import com.aggregator.shell.core.data.local.MusicSourceDao
 import com.aggregator.shell.core.data.local.SubscriptionDao
 import com.aggregator.shell.core.data.local.VideoSourceDao
-import com.aggregator.shell.core.data.local.SubscriptionEntity
 import com.aggregator.shell.core.data.local.entity.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
