@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,6 +31,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,9 +41,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import com.aggregator.shell.core.media.danmaku.DanmakuItem
 import com.aggregator.shell.core.media.player.PlayerCore
-import com.aggregator.shell.core.source.api.VideoResult
 import com.aggregator.shell.core.ui.theme.AppTheme
 import com.aggregator.shell.feature.video.ui.PlayerSurface
 import dagger.hilt.android.AndroidEntryPoint
@@ -64,6 +67,10 @@ class VideoActivity : ComponentActivity() {
                 val playState = vm.play.collectAsState()
                 val results = vm.results.collectAsState()
                 val loading = vm.loadingResults.collectAsState()
+                val dramas = vm.dramas.collectAsState()
+                val loadingDramas = vm.loadingDramas.collectAsState()
+                val lives = vm.lives.collectAsState()
+                val loadingLives = vm.loadingLives.collectAsState()
                 val inPlayback = playState.value.current != null
 
                 Scaffold(
@@ -102,38 +109,179 @@ class VideoActivity : ComponentActivity() {
                             }
                             Spacer(Modifier.height(8.dp))
                             when {
-                                loading.value -> Row(
-                                    Modifier.fillMaxWidth().padding(24.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                                tabIndex == 0 -> LazyColumn(Modifier.fillMaxSize()) {
-                                    items(results.value) { v ->
-                                        VideoCard(
-                                            title = v.title,
-                                            subtitle = "源: ${v.sourceKey} · ${v.type}"
-                                        ) {
-                                            vm.onItemClicked(v)
-                                        }
-                                    }
-                                    if (results.value.isEmpty()) {
-                                        item {
-                                            Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                                Text("暂无结果，点击右上角刷新（内置演示源）")
-                                            }
-                                        }
-                                    }
-                                }
-                                else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("「${if (tabIndex == 1) "短剧" else "IPTV"}」模块已预留，v1.2 落地")
-                                }
+                                loading.value -> LoadingBox()
+                                tabIndex == 0 -> VodoList(
+                                    items = results.value
+                                ) { vm.onItemClicked(it) }
+                                tabIndex == 1 -> DramaPager(
+                                    episodes = dramas.value,
+                                    loading = loadingDramas.value,
+                                    onSwitch = { i -> vm.switchDrama(i) },
+                                    current = playState.value.current
+                                )
+                                tabIndex == 2 -> IptvList(
+                                    channels = lives.value,
+                                    loading = loadingLives.value,
+                                    onSelect = { c -> vm.switchLive(c) },
+                                    current = playState.value.current
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** 点播列表。 */
+@Composable
+private fun VodoList(items: List<com.aggregator.shell.core.source.api.VideoResult>, onClick: (com.aggregator.shell.core.source.api.VideoResult) -> Unit) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(items) { v ->
+            VideoCard(title = v.title, subtitle = "源: ${v.sourceKey} · ${v.type}") { onClick(v) }
+        }
+        if (items.isEmpty()) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    Text("暂无结果，点击右上角刷新（内置演示源）")
+                }
+            }
+        }
+    }
+}
+
+/** 短剧竖屏上下滑：HorizontalPager 按集翻页，每页 9:16 竖屏区。 */
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun DramaPager(
+    episodes: List<DramaEpisode>,
+    loading: Boolean,
+    onSwitch: (Int) -> Unit,
+    current: com.aggregator.shell.core.media.player.PlayMediaItem?
+) {
+    if (loading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    if (episodes.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("暂无短剧集")
+        }
+        return
+    }
+    val pagerState = rememberPagerState(pageCount = { episodes.size })
+    // 翻页完成即切集
+    var lastPage by remember { mutableIntStateOf(-1) }
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != lastPage) {
+            lastPage = pagerState.currentPage
+            onSwitch(pagerState.currentPage)
+        }
+    }
+    Column(
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val ep = episodes[page]
+                VerticalVideo(ep = ep)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = "${pagerState.currentPage + 1} / ${episodes.size} · ${episodes[pagerState.currentPage].title}",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .padding(bottom = 8.dp)
+        )
+    }
+}
+
+/** 竖屏 9:16 视频区：复用 PlayerSurface。 */
+@Composable
+private fun VerticalVideo(ep: DramaEpisode) {
+    val current = com.aggregator.shell.core.media.player.PlayMediaItem(
+        url = ep.url,
+        name = ep.title,
+        isHls = ep.isHls
+    )
+    // 短剧竖屏演示弹幕
+    val danmaku = remember(ep.url) {
+        listOf(DanmakuItem(0L, "短剧 ${ep.title}"), DanmakuItem(2_000L, "下一集更精彩"))
+    }
+    // 用 PlayerSurface 需要 player 注入；这里简化为占位 9:16 区域 + 标题，
+    // 真实竖屏全屏由 App 层切系统横竖屏控制。
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .aspectRatio(9f / 16f)
+            .padding(8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column {
+            Text(ep.title, style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(4.dp))
+            Text(ep.url, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** IPTV 列表。 */
+@Composable
+private fun IptvList(
+    channels: List<LiveChannel>,
+    loading: Boolean,
+    onSelect: (LiveChannel) -> Unit,
+    current: com.aggregator.shell.core.media.player.PlayMediaItem?
+) {
+    if (loading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    if (channels.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("暂无直播源") }
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(channels) { c ->
+            val selected = current?.url == c.url
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Row(
+                    Modifier
+                        .clickable { onSelect(c) }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(c.name)
+                        Text(
+                            text = if (c.group.isNotBlank()) c.group else "直播",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    if (selected) {
+                        Text("播放中", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LoadingBox() {
+    Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+        CircularProgressIndicator()
     }
 }
 
