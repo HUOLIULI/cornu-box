@@ -6,7 +6,15 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
 import com.aggregator.shell.core.data.local.AppDatabase
+import com.aggregator.shell.core.data.local.BookSourceDao
+import com.aggregator.shell.core.data.local.BookshelfDao
+import com.aggregator.shell.core.data.local.EpgDao
+import com.aggregator.shell.core.data.local.LiveSourceDao
+import com.aggregator.shell.core.data.local.MusicSourceDao
+import com.aggregator.shell.core.data.local.PlayHistoryDao
+import com.aggregator.shell.core.data.local.SourceLogDao
 import com.aggregator.shell.core.data.local.SubscriptionDao
+import com.aggregator.shell.core.data.local.VideoSourceDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -33,6 +41,38 @@ object CoreDataModule {
     @Provides
     @Singleton
     fun provideSubscriptionDao(db: AppDatabase): SubscriptionDao = db.subscriptionDao()
+
+    @Provides
+    @Singleton
+    fun provideVideoSourceDao(db: AppDatabase): VideoSourceDao = db.videoSourceDao()
+
+    @Provides
+    @Singleton
+    fun provideLiveSourceDao(db: AppDatabase): LiveSourceDao = db.liveSourceDao()
+
+    @Provides
+    @Singleton
+    fun provideBookSourceDao(db: AppDatabase): BookSourceDao = db.bookSourceDao()
+
+    @Provides
+    @Singleton
+    fun provideMusicSourceDao(db: AppDatabase): MusicSourceDao = db.musicSourceDao()
+
+    @Provides
+    @Singleton
+    fun provideBookshelfDao(db: AppDatabase): BookshelfDao = db.bookshelfDao()
+
+    @Provides
+    @Singleton
+    fun provideEpgDao(db: AppDatabase): EpgDao = db.epgDao()
+
+    @Provides
+    @Singleton
+    fun providePlayHistoryDao(db: AppDatabase): PlayHistoryDao = db.playHistoryDao()
+
+    @Provides
+    @Singleton
+    fun provideSourceLogDao(db: AppDatabase): SourceLogDao = db.sourceLogDao()
 
     @Provides
     @Singleton

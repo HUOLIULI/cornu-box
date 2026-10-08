@@ -32,7 +32,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.aggregator.shell.core.ai.AiSourceAssistant
 import com.aggregator.shell.core.common.ModuleType
 import com.aggregator.shell.core.data.SubscriptionManager
-import com.aggregator.shell.core.data.appDataStore
+import com.aggregator.shell.core.data.di.appDataStore
 import com.aggregator.shell.core.ui.theme.AppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
