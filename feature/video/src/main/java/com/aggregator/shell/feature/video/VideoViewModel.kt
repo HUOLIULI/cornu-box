@@ -44,8 +44,14 @@ data class PlayUiState(
 /** 短剧（竖屏上下滑）单集条目。 */
 data class DramaEpisode(val title: String, val url: String, val isHls: Boolean)
 
-/** IPTV 直播条目。 */
-data class LiveChannel(val name: String, val url: String, val group: String, val isHls: Boolean)
+/** IPTV 直播条目。epg 为该频道的 XMLTV EPG 源 URL（可空，空则走演示 EPG）。 */
+data class LiveChannel(
+    val name: String,
+    val url: String,
+    val group: String,
+    val isHls: Boolean,
+    val epg: String = ""
+)
 
 @HiltViewModel
 class VideoViewModel @Inject constructor(
@@ -84,9 +90,9 @@ class VideoViewModel @Inject constructor(
     private val _danmaku = MutableStateFlow(emptyList<DanmakuItem>())
     val danmaku: StateFlow<List<DanmakuItem>> = _danmaku.asStateFlow()
 
-    /** 当前直播频道的 EPG 节目单。 */
-    private val _epg = MutableStateFlow(emptyList<EpgProgram>())
-    val epg: StateFlow<List<EpgProgram>> = _epg.asStateFlow()
+    /** 当前直播频道的 EPG 节目单快照（正在播 + 即将播 + 频道信息）。 */
+    private val _epg = MutableStateFlow(com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList()))
+    val epg: StateFlow<com.aggregator.shell.core.media.epg.EpgSnapshot> = _epg.asStateFlow()
 
     fun refresh(keyword: String = "演示") {
         viewModelScope.launch {
@@ -159,10 +165,12 @@ class VideoViewModel @Inject constructor(
         }
     }
 
-    /** 加载直播频道 EPG。 */
+    /** 加载直播频道 EPG：优先真实 XMLTV 源，拉取/解析失败回退演示。 */
     private fun loadEpg(channel: LiveChannel) {
         viewModelScope.launch {
-            _epg.value = runCatching { epgProvider.epgFor(channel.url) }.getOrDefault(emptyList())
+            _epg.value = runCatching {
+                epgProvider.epgFor(channel.epg, channelId = "live-demo")
+            }.getOrDefault(com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList()))
         }
     }
 
@@ -212,7 +220,7 @@ class VideoViewModel @Inject constructor(
         playerCore.release()
         _play.value = PlayUiState()
         _danmaku.value = emptyList()
-        _epg.value = emptyList()
+        _epg.value = com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList())
     }
 
     private fun mediaItemFor(
@@ -240,7 +248,8 @@ class VideoViewModel @Inject constructor(
                 name = l.optString("name", "直播 $i"),
                 url = url,
                 group = l.optString("group", ""),
-                isHls = url.endsWith(".m3u8", true)
+                isHls = url.endsWith(".m3u8", true),
+                epg = l.optString("epg", "")
             )
         }
     }.getOrDefault(emptyList())

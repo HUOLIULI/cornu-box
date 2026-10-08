@@ -26,6 +26,7 @@ kotlin {
 
 dependencies {
     api(project(":core:common"))
+    implementation(project(":core:data"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.media3.exoplayer)

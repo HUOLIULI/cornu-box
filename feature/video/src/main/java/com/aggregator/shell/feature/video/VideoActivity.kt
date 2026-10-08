@@ -46,7 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.aggregator.shell.core.media.danmaku.DanmakuItem
-import com.aggregator.shell.core.media.epg.EpgProgram
+import com.aggregator.shell.core.media.epg.EpgSnapshot
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.source.api.VideoResult
@@ -137,7 +137,9 @@ class VideoActivity : ComponentActivity() {
                                 tabIndex == 1 -> DramaPager(
                                     episodes = dramas.value,
                                     loading = loadingDramas.value,
-                                    onSwitch = { i -> vm.switchDrama(i) }
+                                    onSwitch = { i -> vm.switchDrama(i) },
+                                    player = playerCore,
+                                    danmaku = danmaku.value
                                 )
                                 tabIndex == 2 -> IptvList(
                                     channels = lives.value,
@@ -171,13 +173,15 @@ private fun VodoList(items: List<VideoResult>, onClick: (VideoResult) -> Unit) {
     }
 }
 
-/** 短剧竖屏上下滑：VerticalPager 逐集翻页，每页 9:16 竖屏播放器。 */
+/** 短剧竖屏上下滑：VerticalPager 逐集翻页，每页 9:16 竖屏播放器（全屏沉浸）。 */
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 private fun DramaPager(
     episodes: List<DramaEpisode>,
     loading: Boolean,
-    onSwitch: (Int) -> Unit
+    onSwitch: (Int) -> Unit,
+    player: PlayerCore,
+    danmaku: List<DanmakuItem>
 ) {
     if (loading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -204,7 +208,7 @@ private fun DramaPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                VerticalVideo(ep = episodes[page])
+                VerticalVideo(ep = episodes[page], player = player, danmaku = danmaku)
             }
         }
         Spacer(Modifier.height(4.dp))
@@ -218,26 +222,21 @@ private fun DramaPager(
     }
 }
 
-/** 竖屏 9:16 视频区：复用 PlayerSurface（播放器由 Activity 注入的全局 PlayerCore 承载）。 */
+/** 竖屏 9:16 视频区：挂 PlayerSurface（真实 ExoPlayer 全屏渲染 + 弹幕）。 */
 @Composable
-private fun VerticalVideo(ep: DramaEpisode) {
+private fun VerticalVideo(ep: DramaEpisode, player: PlayerCore, danmaku: List<DanmakuItem>) {
+    val current = PlayMediaItem(
+        url = ep.url,
+        name = ep.title,
+        isHls = ep.isHls
+    )
     Box(
         Modifier
             .fillMaxWidth()
             .aspectRatio(9f / 16f)
-            .padding(8.dp),
-        contentAlignment = Alignment.Center
+            .padding(8.dp)
     ) {
-        Column {
-            Text(ep.title, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(4.dp))
-            Text(
-                ep.url,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        PlayerSurface(item = current, player = player, danmaku = danmaku)
     }
 }
 
@@ -304,7 +303,7 @@ private fun PlaybackScreen(
     state: PlayUiState,
     player: PlayerCore,
     danmaku: List<DanmakuItem>,
-    epg: List<EpgProgram>,
+    epg: EpgSnapshot,
     onSwitch: (Int, Int) -> Unit
 ) {
     val current = state.current
@@ -315,7 +314,7 @@ private fun PlaybackScreen(
             }
             current != null -> {
                 PlayerSurface(item = current, player = player, danmaku = danmaku)
-                if (epg.isNotEmpty()) EpgPanel(epg)
+                if (epg.nowPlaying != null || epg.upcoming.isNotEmpty()) EpgPanel(epg)
                 EpisodeSelector(state = state, onSwitch = onSwitch)
             }
             else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -325,39 +324,50 @@ private fun PlaybackScreen(
     }
 }
 
-/** IPTV 选中后展示当前直播的 EPG 节目单（正在播高亮）。 */
+/** IPTV 选中后展示当前直播的 EPG 节目单（正在播高亮 + 即将播列表）。 */
 @Composable
-private fun EpgPanel(epg: List<EpgProgram>) {
-    val now = System.currentTimeMillis()
+private fun EpgPanel(snapshot: EpgSnapshot) {
+    val programs = snapshot.upcoming
+    if (programs.isEmpty() && snapshot.nowPlaying == null) return
     val timeFmt = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     Column(Modifier.fillMaxWidth().padding(12.dp)) {
-        Text("节目单", style = MaterialTheme.typography.titleSmall)
+        Text("节目单 · ${snapshot.channel?.displayName ?: "直播"}", style = MaterialTheme.typography.titleSmall)
         Spacer(Modifier.height(8.dp))
         LazyColumn(Modifier.fillMaxWidth().height(200.dp)) {
-            items(epg) { p ->
-                val live = now in p.startTime..p.endTime
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "${timeFmt.format(Date(p.startTime))}-${timeFmt.format(Date(p.endTime))}",
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(end = 8.dp)
-                    )
-                    Text(
-                        text = p.title,
-                        style = if (live) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
-                        color = if (live) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    )
-                    if (live) {
-                        Spacer(Modifier.height(0.dp))
-                        Text(" · 正在播", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
-                    }
-                }
+            items(snapshot.nowPlaying?.let { listOf(it) } ?: emptyList()) { p ->
+                EpgRow(p, live = true, timeFmt = timeFmt)
             }
+            items(programs) { p ->
+                EpgRow(p, live = false, timeFmt = timeFmt)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpgRow(
+    p: com.aggregator.shell.core.media.epg.EpgProgram,
+    live: Boolean,
+    timeFmt: SimpleDateFormat
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "${timeFmt.format(Date(p.startTime))}-${timeFmt.format(Date(p.endTime))}",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(end = 8.dp)
+        )
+        Text(
+            text = p.title,
+            style = if (live) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+            color = if (live) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        )
+        if (live) {
+            Text(" · 正在播", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelSmall)
         }
     }
 }

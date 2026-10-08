@@ -36,7 +36,7 @@ object SourceBootstrap {
             { "key": "demo", "name": "演示", "type": 1, "api": "https://example.com/api/v1" }
           ],
           "lives": [
-            { "name": "演示直播", "type": 0, "url": "https://example.com/live/demo.m3u8" }
+            { "name": "演示直播", "type": 0, "url": "https://example.com/live/demo.m3u8", "epg": "" }
           ],
           "flags": ["demo"]
         }

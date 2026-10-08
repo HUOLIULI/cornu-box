@@ -1,5 +1,6 @@
 package com.aggregator.shell.core.media.di
 
+import com.aggregator.shell.core.data.local.EpgDao
 import com.aggregator.shell.core.media.danmaku.DanmakuSource
 import com.aggregator.shell.core.media.danmaku.LocalDanmakuSource
 import com.aggregator.shell.core.media.epg.EpgParser
@@ -32,7 +33,10 @@ abstract class MediaModule {
 
         @Provides
         @Singleton
-        fun provideEpgProvider(client: OkHttpClient, parser: EpgParser): EpgProvider =
-            EpgProvider(client, parser)
+        fun provideEpgProvider(
+            client: OkHttpClient,
+            parser: EpgParser,
+            epgDao: EpgDao
+        ): EpgProvider = EpgProvider(client, parser, epgDao)
     }
 }
