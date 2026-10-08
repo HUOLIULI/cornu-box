@@ -1,6 +1,6 @@
 package com.aggregator.shell.core.data
 
-import com.aggregator.shell.core.data.local.SubscriptionDao
+import com.aggregator.shell.core.data.local.entity.SubscriptionEntity
 
 /**
  * High-level source management facade. Concrete per-module repositories are
@@ -29,10 +29,12 @@ interface MusicSourceRepo {
 
 /**
  * Subscribes to remote source repositories. The shell ships with no bundled
- * source content; all content is user-imported.
+ * source content; all content is user-imported. `update` performs a dedup-merge
+ * pull; `listSubscriptions` returns the persisted subscription records.
  */
 interface SubscriptionManager {
     suspend fun addSubscription(name: String, module: String, url: String)
     suspend fun update(subId: String)
     suspend fun remove(subId: String)
+    suspend fun listSubscriptions(): List<SubscriptionEntity>
 }

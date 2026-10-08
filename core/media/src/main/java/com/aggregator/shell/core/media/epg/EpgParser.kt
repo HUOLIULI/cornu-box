@@ -83,6 +83,22 @@ class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
 
         for (line in xml.lineSequence()) {
             val t = line.trim()
+            // A single line may both open and close a text element: <title>foo</title>
+            if (inProgramme && t.startsWith("<title")) {
+                val open = t.substringAfter("<title>")
+                val close = open.substringBefore("<", "")
+                title += close.trim()
+                // if not closed on this line, keep capturing until </title>
+                if (!close.contains("</title>") && !t.endsWith("</title>")) inTitle = true else inTitle = false
+                continue
+            }
+            if (inProgramme && t.startsWith("<desc")) {
+                val open = t.substringAfter("<desc>")
+                val close = open.substringBefore("<", "")
+                desc = (desc ?: "") + close.trim()
+                if (!close.contains("</desc>") && !t.endsWith("</desc>")) inDesc = true else inDesc = false
+                continue
+            }
             when {
                 t.startsWith("<channel") -> {
                     inChannel = true

@@ -20,3 +20,22 @@ sealed class AppException(
     class AiException(message: String, cause: Throwable? = null) :
         AppException(6000, "AI 助手异常：$message", cause)
 }
+
+/**
+ * Lightweight logging seam so core modules can emit structured, level-filtered
+ * diagnostics without a hard dependency on `android.util.Log`. The shell app
+ * binds a Logcat-backed implementation; unit tests can substitute a recorder.
+ */
+interface AppLog {
+    fun d(tag: String, msg: String)
+    fun i(tag: String, msg: String)
+    fun w(tag: String, msg: String, tr: Throwable? = null)
+    fun e(tag: String, msg: String, tr: Throwable? = null)
+}
+
+object NoOpLog : AppLog {
+    override fun d(tag: String, msg: String) {}
+    override fun i(tag: String, msg: String) {}
+    override fun w(tag: String, msg: String, tr: Throwable?) {}
+    override fun e(tag: String, msg: String, tr: Throwable?) {}
+}

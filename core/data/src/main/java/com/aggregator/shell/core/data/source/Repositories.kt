@@ -9,11 +9,14 @@ import com.aggregator.shell.core.data.VideoSourceRepo
 import com.aggregator.shell.core.data.local.BookSourceDao
 import com.aggregator.shell.core.data.local.LiveSourceDao
 import com.aggregator.shell.core.data.local.MusicSourceDao
+import com.aggregator.shell.core.data.local.SourceLogDao
 import com.aggregator.shell.core.data.local.SubscriptionDao
 import com.aggregator.shell.core.data.local.VideoSourceDao
+import com.aggregator.shell.core.data.local.entity.SourceLogEntity
 import com.aggregator.shell.core.data.local.entity.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.util.UUID
@@ -200,12 +203,12 @@ class MusicSourceRepoImpl @javax.inject.Inject constructor(
 
 class SubscriptionManagerImpl @javax.inject.Inject constructor(
     private val subscriptionDao: SubscriptionDao,
-    private val videoRepo: VideoSourceRepo,
-    private val readerRepo: ReaderSourceRepo,
-    private val musicRepo: MusicSourceRepo,
+    private val videoRepo: VideoSourceRepoImpl,
+    private val readerRepo: ReaderSourceRepoImpl,
+    private val musicRepo: MusicSourceRepoImpl,
+    private val sourceLogDao: SourceLogDao,
     @ApplicationContext private val context: Context
 ) : SubscriptionManager {
-
     private val client = OkHttpClient.Builder().build()
 
     override suspend fun addSubscription(name: String, module: String, url: String) {
@@ -223,8 +226,20 @@ class SubscriptionManagerImpl @javax.inject.Inject constructor(
     override suspend fun update(subId: String) {
         val sub = subscriptionDao.byId(subId) ?: return
         if (sub.autoUpdate && System.currentTimeMillis() - sub.lastUpdate < sub.updateInterval) return
+        val started = System.currentTimeMillis()
         val body = fetch(sub.url)
         if (body.isBlank()) {
+            sourceLogDao.add(
+                SourceLogEntity(
+                    id = "log-${UUID.randomUUID()}",
+                    ts = System.currentTimeMillis(),
+                    category = sub.moduleType,
+                    url = sub.url,
+                    method = "UPDATE",
+                    status = 500,
+                    detail = "拉取内容为空"
+                )
+            )
             throw AppException.SubscriptionUpdateException(sub.url, Exception("拉取内容为空"))
         }
         when (sub.moduleType) {
@@ -233,10 +248,25 @@ class SubscriptionManagerImpl @javax.inject.Inject constructor(
             "MUSIC" -> musicRepo.upsertLocal(sub.name, body)
             else -> {}
         }
+        sourceLogDao.add(
+            SourceLogEntity(
+                id = "log-${UUID.randomUUID()}",
+                ts = System.currentTimeMillis(),
+                category = sub.moduleType,
+                url = sub.url,
+                method = "UPDATE",
+                status = 200,
+                detail = "ok",
+                durationMs = System.currentTimeMillis() - started
+            )
+        )
         subscriptionDao.upsert(sub.copy(lastUpdate = System.currentTimeMillis()))
     }
 
     override suspend fun remove(subId: String) = subscriptionDao.remove(subId)
+
+    override suspend fun listSubscriptions(): List<SubscriptionEntity> =
+        subscriptionDao.all().first()
 
     private suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
         val resp = client.newCall(
