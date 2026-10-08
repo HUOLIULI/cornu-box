@@ -215,7 +215,7 @@ class SettingsActivity : ComponentActivity() {
 
             Spacer(Modifier.height(16.dp))
             Text("关于", style = MaterialTheme.typography.titleLarge)
-            Text("MediaShell v1.5.0 · 壳子 APK · 不内置任何内容源", style = MaterialTheme.typography.bodyMedium)
+            Text("MediaShell v1.5.1 · 壳子 APK · 不内置任何内容源", style = MaterialTheme.typography.bodyMedium)
         }
     }
 

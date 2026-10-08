@@ -5,4 +5,3 @@
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — 系统架构与模块边界
 - [INTERFACES.md](./INTERFACES.md) — 源引擎能力接口、沙箱、AI 助手
 - [DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) — 构建、运行、测试
-- [SPEC_V1.1_FIXES.md](./SPEC_V1.1_FIXES.md) — 对 v1.0.0 开发文档缺口的补全说明

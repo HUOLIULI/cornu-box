@@ -41,7 +41,7 @@ Kotlin 2.0.21 · Compose BOM 2024.10.01 · Hilt 2.52（KSP）· Room 2.6.1 · Me
 
 ## 版本
 
-`versionName 1.5.0`（`versionCode 5`）。完整演进见 [CHANGELOG.md](./CHANGELOG.md)。
+`versionName 1.5.1`（`versionCode 6`）。完整演进见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 配置
 

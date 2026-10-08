@@ -2,6 +2,12 @@
 
 MediaShell（com.aggregator.shell）— 多源聚合阅读 / 影视 / 音乐壳子 APK。
 
+## 1.5.1
+
+- 单测对齐 RuleParser v1.1.1 严格 JSONPath 语义（数组通配 `[*]`、字段需 `$.` 前缀）
+- 归档整理：移除过期 `修复说明_v1.1.md` / `SPEC_V1.1_FIXES.md`，文档收敛到
+  `README` + `CHANGELOG` + `docs/SOURCE_CONFIG.md` + `.monkeycode/docs/`
+
 ## 1.5.0
 
 - 弹幕源配置化：新增 RemoteDanmakuSource，按「设置 → 弹幕源」本机 DataStore 配置
