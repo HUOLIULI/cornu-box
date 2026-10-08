@@ -25,6 +25,9 @@ import androidx.media3.ui.PlayerView
 import com.aggregator.shell.core.media.danmaku.DanmakuItem
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 
 @Composable
 fun DanmakuOverlay(
@@ -33,8 +36,10 @@ fun DanmakuOverlay(
 ) {
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(40L)
+        val ctx = kotlinx.coroutines.currentCoroutineContext()
+        val job = ctx[kotlinx.coroutines.Job]
+        while (job?.isActive == true) {
+            delay(40L)
             tick = (tick + 1) % 10_000
         }
     }

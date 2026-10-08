@@ -158,6 +158,7 @@ class RuleParser(private val jsExecutor: JsSandboxExecutor) {
                 jsonPathElements(input, r.removePrefix("@Json:")).map { stringify(it) }
             r.startsWith("//") -> cssElements(input, r.removePrefix("//")).map { elementText(it) }
             r.startsWith("@CSS:") -> cssElements(input, r.removePrefix("@CSS:")).map { elementText(it) }
+            r.startsWith(":") -> regexAll(input, r.removePrefix(":"))
             r.startsWith("@JS:") -> jsList(input, r.removePrefix("@JS:"))
             else -> cssElements(input, r).map { elementText(it) }
         }
@@ -279,10 +280,20 @@ class RuleParser(private val jsExecutor: JsSandboxExecutor) {
 
     // ---------- 内部：Regex / JS ----------
 
-    private fun regex(input: String, pattern: String): String =
-        try {
-            Regex(pattern).find(input)?.value ?: ""
-        } catch (e: Exception) { "" }
+    private fun regex(input: String, pattern: String): String {
+        val m = runCatching { Regex(pattern).find(input) }.getOrNull() ?: return ""
+        // Legado 语义：存在捕获组时取第 1 组，否则取整段匹配
+        return m.groupValues.getOrNull(1) ?: m.value
+    }
+
+    private fun regexAll(input: String, pattern: String): List<String> {
+        val regex = runCatching { Regex(pattern) }.getOrNull() ?: return emptyList()
+        val out = mutableListOf<String>()
+        regex.findAll(input).forEach { m ->
+            out += m.groupValues.getOrNull(1) ?: m.value
+        }
+        return out
+    }
 
     private suspend fun js(input: String, script: String): String {
         val result = jsExecutor.execute(

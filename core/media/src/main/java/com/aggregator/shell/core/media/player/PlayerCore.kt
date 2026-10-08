@@ -7,9 +7,11 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.aggregator.shell.core.common.AppException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -50,6 +52,7 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     private var current: PlayMediaItem? = null
     private var retryCount = 0
     private var retryJob: Job? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(PlayerState.Idle)
     override val state: StateFlow<PlayerState> = _state.asStateFlow()
 
@@ -126,7 +129,7 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun release() {
-        retryJob?.cancel()
+        scope.cancel()
         player?.release()
         player = null
         pendingView = null
@@ -137,7 +140,7 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         if (retryCount >= 5) return
         val cur = current ?: return
         retryJob?.cancel()
-        retryJob = GlobalScope.launch {
+        retryJob = scope.launch {
             val backoff = minOf(2.0.pow(retryCount).toInt(), 15) * 1000L
             delay(backoff.toLong())
             retryCount++
