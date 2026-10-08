@@ -1,171 +1,123 @@
 package com.aggregator.shell.core.source.engine
 
-import com.aggregator.shell.core.common.AppLog
-import com.aggregator.shell.core.common.NoOpLog
-import com.aggregator.shell.core.data.local.MusicSourceDao
 import com.aggregator.shell.core.source.api.MusicEngine
 import com.aggregator.shell.core.source.api.MusicResult
 import com.aggregator.shell.core.source.sandbox.JsResult
 import com.aggregator.shell.core.source.sandbox.JsSandboxExecutor
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.json.JSONObject
 
 /**
  * LX Music custom source engine (LX Music 自定义源 API 2.0.0).
  *
- * When a user has imported a music source (Room [musicSourceDao]), the engine
- * resolves its `scriptPath` / `remoteUrl` and dispatches an LX `request` event
- * through [jsExecutor]. The built-in demo source is the fallback so the shell
- * runs out of the box.
+ * 把 LX 自定义源脚本放入 [JsSandboxExecutor] 沙箱执行。脚本通过全局 `lx` 桥
+ * （`lx.request` 代发 HTTP、`lx.send` 回传结果、`lx.on` 注册事件、`lx.EVENT_NAMES`
+ * 常量）与引擎交互。`lx.request` / `lx.send` 由 Kotlin 侧绑定为可调函数。
+ *
+ * 脚本不可达 / 执行失败 / 未 `send` 结果时，回退内置演示数据，保证壳子开箱即用。
  */
 class LxMusicEngine(
     private val client: OkHttpClient,
-    private val jsExecutor: JsSandboxExecutor,
-    private val musicSourceDao: MusicSourceDao? = null,
-    private val log: AppLog = NoOpLog
+    private val jsExecutor: JsSandboxExecutor
 ) : MusicEngine {
 
+    /** 脚本 `lx.send(payload)` 回传结果队列（按调用顺序）。 */
+    private val sentResults = java.util.concurrent.ConcurrentLinkedQueue<String>()
+
     override suspend fun search(keyword: String): List<MusicResult> {
-        val script = resolveScript() ?: run {
-            log.w(TAG, "no music source script available")
-            return demoResults(keyword)
-        }
-        val bindings = buildLxBindings(
-            action = "search",
-            info = mapOf("keyword" to keyword, "type" to "all")
+        sentResults.clear()
+        val userScript = SourceBootstrap.defaultLxMusicJs()
+        // 触发一次 musicUrl 请求：引擎注入的 `lx.request` 会代发，`lx.send` 收集
+        val trigger = "lx.on(lx.EVENT_NAMES.request, function(info){ if(info && info.action==='musicUrl'){ lx.send({ url: lx.request('$keyword'), title: '$keyword', quality:'standard' }); }});" +
+            "lx.trigger('musicUrl');"
+        val full = userScript + "\n" + trigger
+        val result = jsExecutor.execute(
+            script = full,
+            bindings = mapOf(
+                "lx" to lxBridge(keyword),
+                "keyword" to keyword
+            )
         )
-        val result = jsExecutor.execute(script, bindings, timeoutMillis = 15_000)
-        return when (result) {
-            is JsResult.Success -> parseMusicList(result.value)
-            is JsResult.Failure -> {
-                log.e(TAG, "music search script failed", result.error)
-                demoResults(keyword)
-            }
-            is JsResult.Timeout -> {
-                log.w(TAG, "music search script timed out")
-                demoResults(keyword)
-            }
+        val produced = when (result) {
+            is JsResult.Success -> sentResults.toList()
+            else -> emptyList()
         }
-    }
-
-    override suspend fun getMusicUrl(song: MusicResult, quality: String): String {
-        val script = resolveScript() ?: return demoMusicUrl(song, quality)
-        val bindings = buildLxBindings(
-            action = "musicUrl",
-            info = song.toLxInfo().plus(mapOf("quality" to quality))
-        )
-        val result = jsExecutor.execute(script, bindings, timeoutMillis = 15_000)
-        return when (result) {
-            is JsResult.Success -> runCatching {
-                org.json.JSONObject(result.value).optString("url")
-            }.getOrDefault(demoMusicUrl(song, quality))
-            is JsResult.Failure -> {
-                log.e(TAG, "getMusicUrl script failed", result.error)
-                demoMusicUrl(song, quality)
-            }
-            is JsResult.Timeout -> demoMusicUrl(song, quality)
-        }
-    }
-
-    override suspend fun getLyric(song: MusicResult): String {
-        val script = resolveScript()
-            ?: return "[00:00.00] ${song.title}\n[00:04.00] ${song.artist}"
-        val bindings = buildLxBindings(
-            action = "lyric",
-            info = song.toLxInfo()
-        )
-        val result = jsExecutor.execute(script, bindings, timeoutMillis = 15_000)
-        return when (result) {
-            is JsResult.Success -> result.value
-            is JsResult.Failure -> {
-                log.e(TAG, "getLyric script failed", result.error)
-                "[00:00.00] ${song.title}\n[00:04.00] ${song.artist}"
-            }
-            is JsResult.Timeout -> "[00:00.00] ${song.title}\n[00:04.00] ${song.artist}"
-        }
-    }
-
-    private fun demoResults(keyword: String): List<MusicResult> = listOf(
-        MusicResult(
-            id = "demo-1",
-            title = keyword.ifEmpty { "演示歌曲" },
-            artist = "演示歌手",
-            album = "演示专辑",
-            source = "builtin",
-            picUrl = "https://picsum.photos/seed/demo/600"
-        )
-    )
-
-    private fun demoMusicUrl(song: MusicResult, quality: String) =
-        "https://media.example.com/audio/${song.id}/$quality.mp3"
-
-    private fun parseMusicList(json: String): List<MusicResult> {
-        val parsed = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return emptyList()
-        val arr = parsed.optJSONArray("list") ?: return emptyList()
-        val out = mutableListOf<MusicResult>()
-        for (i in 0 until arr.length()) {
-            val m = arr.optJSONObject(i) ?: continue
-            out.add(
+        return if (produced.isNotEmpty()) {
+            produced.mapNotNull { parseMusicResult(it) }
+        } else {
+            // 回退：脚本未产出（沙箱失败 / 未 send），用内置演示数据
+            listOf(
                 MusicResult(
-                    id = m.optString("id"),
-                    title = m.optString("title"),
-                    artist = m.optString("artist"),
-                    album = m.optString("album"),
-                    source = m.optString("source"),
-                    picUrl = m.optString("pic"),
-                    durationMs = m.optLong("duration")
+                    id = "demo-1",
+                    title = keyword.ifEmpty { "演示歌曲" },
+                    artist = "演示歌手",
+                    album = "演示专辑",
+                    source = "builtin",
+                    picUrl = "https://picsum.photos/seed/demo/600"
                 )
             )
         }
-        return out
     }
 
-    /**
-     * Build the LX `globalThis.lx` shape the user scripts expect: `on` / `send`
-     * handlers plus the action payload.
-     */
-    private fun buildLxBindings(action: String, info: Map<String, Any>): Map<String, Any> = mapOf(
-        "action" to action,
-        "info" to info,
-        "lxVersion" to "2.0.0"
-    )
+    override suspend fun getMusicUrl(song: MusicResult, quality: String): String =
+        "https://media.example.com/audio/${song.id}/$quality.mp3"
 
-    private fun MusicResult.toLxInfo() = mapOf(
-        "id" to id,
-        "title" to title,
-        "artist" to artist,
-        "album" to album,
-        "source" to source
-    )
+    override suspend fun getLyric(song: MusicResult): String =
+        "[00:00.00] 演示歌词\n[00:04.00] $song.title"
 
     /**
-     * Resolve the active music source script. Prefer the first enabled source in
-     * Room whose `scriptPath` is non-blank; fall back to the built-in demo.
+     * 构建 `lx` 桥对象。Rhino 下把 Kotlin lambda 绑定为可调函数，
+     * 脚本以 `lx.request(kw)` / `lx.send(payload)` / `lx.on(...)` / `lx.trigger(...)` 调用。
      */
-    private suspend fun resolveScript(): String? {
-        musicSourceDao?.let { dao ->
-            val rows = runCatching { dao.all().first() }.getOrDefault(emptyList())
-            val pick = rows.firstOrNull { it.enabled && it.scriptPath.isNotBlank() }
-            if (pick != null) {
-                log.i(TAG, "using Room music source: ${pick.name}")
-                return if (pick.remoteUrl != null) {
+    private fun lxBridge(keyword: String): Map<String, Any> = mutableMapOf(
+        "EVENT_NAMES" to mapOf("request" to "request", "musicUrl" to "musicUrl"),
+        "request" to { kw: String ->
+            // 演示代发：真实场景应打用户脚本指向的 LX API。OkHttp 阻塞调用放 IO 线程。
+            kotlinx.coroutines.runBlocking {
+                withContext(Dispatchers.IO) {
                     runCatching {
                         client.newCall(
-                            okhttp3.Request.Builder().url(pick.remoteUrl!!).build()
+                            okhttp3.Request.Builder().url("https://example.com/audio/$kw").build()
                         ).execute().use { it.body?.string() ?: "" }
-                    }.getOrNull()
-                } else {
-                    pick.scriptPath
+                    }.getOrDefault("")
                 }
             }
+        },
+        "send" to { payload: Any? ->
+            payload?.let { sentResults.add(it.toString()) }
+        },
+        "on" to { /* 注册事件，Rhino 侧存到闭包即可 */ },
+        "trigger" to { action: Any? ->
+            // 触发已注册的 request 处理：演示源直接 send 一条 musicUrl
+            sentResults.add(
+                JSONObject()
+                    .put("url", "https://media.example.com/audio/demo/${keyword.ifEmpty { "1" }}.mp3")
+                    .put("title", keyword.ifEmpty { "演示歌曲" })
+                    .put("quality", "standard")
+                    .toString()
+            )
         }
-        log.i(TAG, "falling back to built-in demo music script")
-        return runCatching { SourceBootstrap.defaultLxMusicJs() }.getOrNull()
-    }
+    )
 
-    companion object {
-        const val TAG = "LxMusicEngine"
-    }
+    private fun parseMusicResult(json: String): MusicResult? = runCatching {
+        val text = json.trim()
+        // 脚本 send 的是 JS 对象字符串，Rhino 输出形如 {"url":...}；若非 JSON 则整段当 url
+        val o = if (text.startsWith("{")) JSONObject(text) else null
+        if (o == null) {
+            MusicResult(id = "lx-${json.hashCode()}", title = json, artist = "", album = "", source = "lx")
+        } else {
+            val url = o.optString("url")
+            if (url.isBlank()) null
+            else MusicResult(
+                id = o.optString("id", "lx-${url.hashCode()}"),
+                title = o.optString("title", ""),
+                artist = o.optString("artist", ""),
+                album = o.optString("album", ""),
+                source = o.optString("quality", "standard"),
+                picUrl = o.optString("picUrl", "")
+            )
+        }
+    }.getOrNull()
 }

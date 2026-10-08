@@ -26,12 +26,15 @@ kotlin {
 
 dependencies {
     api(project(":core:common"))
+    implementation(project(":core:data"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.datastore.preferences)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.session)
+    implementation(libs.media3.ui)
     implementation(libs.okhttp)
 
     implementation(platform(libs.androidx.compose.bom))

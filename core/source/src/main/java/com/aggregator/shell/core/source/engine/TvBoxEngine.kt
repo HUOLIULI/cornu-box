@@ -1,9 +1,5 @@
 package com.aggregator.shell.core.source.engine
 
-import com.aggregator.shell.core.common.AppLog
-import com.aggregator.shell.core.common.NoOpLog
-import com.aggregator.shell.core.data.local.LiveSourceDao
-import com.aggregator.shell.core.data.local.VideoSourceDao
 import com.aggregator.shell.core.source.api.PlayResult
 import com.aggregator.shell.core.source.api.VideoDetail
 import com.aggregator.shell.core.source.api.VideoEngine
@@ -11,200 +7,152 @@ import com.aggregator.shell.core.source.api.VideoResult
 import com.aggregator.shell.core.source.sandbox.JsSandboxExecutor
 import com.aggregator.shell.core.source.sandbox.PythonRuntime
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import org.json.JSONArray
 import org.json.JSONObject
+import java.net.URLEncoder
 
 /**
  * TVBox / CatVod / T4-compatible engine.
  *
- * Supports:
- * - JS spider backends (via [JsSandboxExecutor])
- * - Python backends (via [PythonRuntime]; default build ships [PythonRuntime.NoOp])
- * - JSON API backends
+ * 对接 CatVod 标准接口约定：
+ * - 搜索：`{api}?ac=search&wd={keyword}&pg={page}`，响应 `{"list":[{vod_id,vod_name,vod_pic,type_name}]}`
+ * - 详情：`{api}?ac=detail&ids={id}`，响应 `{"list":[{vod_id,vod_name,vod_content,vod_play_url}]}`
+ * - 播放：`{api}?ac=videoplay&ids={id}`，从 `vod_play_url` 解析线路与剧集
+ * - `vod_play_url` 格式：`线路1$url#url#url$$$线路2$url#url`（`$$$` 分线路，`#` 分集，`$` 分名称/URL）
  *
- * Source payloads come from Room [videoSourceDao] / [liveSourceDao] when the
- * user has imported subscriptions; otherwise the built-in demo config is used.
+ * 内置演示源（example.com）请求不可达时返回本地演示数据，保证开箱有内容。
  */
 class TvBoxEngine(
     private val client: OkHttpClient,
     private val jsExecutor: JsSandboxExecutor,
-    private val pythonRuntime: PythonRuntime,
-    private val videoSourceDao: VideoSourceDao? = null,
-    private val liveSourceDao: LiveSourceDao? = null,
-    private val log: AppLog = NoOpLog
+    private val pythonRuntime: PythonRuntime
 ) : VideoEngine {
 
     override suspend fun search(keyword: String, page: Int): List<VideoResult> {
-        val sites = resolveSites()
-        if (sites.isEmpty()) {
-            log.w(TAG, "no video sites available")
-            return emptyList()
-        }
-        return sites.mapNotNull { site ->
-            val api = site.optString("api")
-            if (api.isBlank()) {
-                log.w(TAG, "site ${site.optString("name")} has no api url")
-                return@mapNotNull null
-            }
-            try {
-                val resp = get("$api/search?key=${java.net.URLEncoder.encode(keyword, "UTF-8")}&page=$page")
-                if (resp.isBlank()) return@mapNotNull null
-                parseVideoList(resp, site)
-            } catch (e: Exception) {
-                log.e(TAG, "search failed for ${site.optString("name")}", e)
-                null
-            }
+        val spider = fetchTvBoxConfig() ?: return emptyList()
+        val sites = spider.optJSONArray("sites") ?: return emptyList()
+        return (0 until sites.length()).mapNotNull { i ->
+            val site = sites.getJSONObject(i)
+            runCatching {
+                val api = site.optString("api")
+                if (api.isBlank()) return@runCatching null
+                val resp = get(buildUrl(api, "search", mapOf("wd" to keyword, "pg" to page.toString())))
+                if (resp.isBlank()) return@runCatching null
+                val json = JSONObject(resp)
+                val list = json.optJSONArray("list") ?: return@runCatching null
+                (0 until list.length()).mapNotNull { j ->
+                    val v = list.getJSONObject(j)
+                    val title = v.optString("vod_name")
+                    if (title.isBlank()) null
+                    else VideoResult(
+                        id = v.optString("vod_id"),
+                        title = title,
+                        coverUrl = v.optString("vod_pic"),
+                        type = v.optString("type_name"),
+                        year = v.optString("vod_year"),
+                        sourceKey = site.optString("key", "demo")
+                    )
+                }
+            }.getOrNull()
         }.flatten()
     }
 
-    /**
-     * TVBox / CatVod search responses wrap the result in a JSON object whose
-     * `list` (or `videoList`) field holds the items. Some backends return a
-     * bare array. Each element carries `vod_id` / `vod_name` / `vod_pic` in
-     * the TVBox naming scheme.
-     */
-    private fun parseVideoList(resp: String, site: JSONObject): List<VideoResult> {
-        val json = JSONObject(resp)
-        val arr: JSONArray = when {
-            json.has("list") -> json.getJSONArray("list")
-            json.has("videoList") -> json.getJSONArray("videoList")
-            json.has("data") && json.get("data") is JSONArray -> json.getJSONArray("data")
-            else -> JSONArray(resp)
-        }
-        val results = mutableListOf<VideoResult>()
-        for (i in 0 until arr.length()) {
-            val item = arr.optJSONObject(i) ?: continue
-            results.add(
-                VideoResult(
-                    id = item.optString("vod_id").ifEmpty { item.optString("id") },
-                    title = item.optString("vod_name").ifEmpty { item.optString("name") },
-                    coverUrl = item.optString("vod_pic").ifEmpty { item.optString("pic") },
-                    type = item.optString("type").ifEmpty { item.optString("type_name") },
-                    year = item.optString("year").ifEmpty { item.optString("area") },
-                    sourceKey = site.optString("key", "demo")
-                )
-            )
-        }
-        return results
-    }
-
     override suspend fun getDetail(id: String): VideoDetail {
-        val site = resolveSites().firstOrNull()
-            ?: run {
-                log.w(TAG, "no site for detail $id")
-                return VideoDetail(id = id, title = "", desc = "", episodes = emptyMap())
-            }
+        val site = firstSite() ?: return VideoDetail(id = id, title = "", desc = "", episodes = emptyMap())
         val api = site.optString("api")
         if (api.isBlank()) return VideoDetail(id = id, title = "", desc = "", episodes = emptyMap())
-        val resp = get("$api/detail/$id")
-        val json = runCatching { JSONObject(resp) }.getOrNull()
+        val resp = get(buildUrl(api, "detail", mapOf("ids" to id)))
+        if (resp.isBlank()) return VideoDetail(id = id, title = "", desc = "", episodes = emptyMap())
+        val json = JSONObject(resp)
+        val vod = json.optJSONArray("list")?.optJSONObject(0)
+            ?: json.optJSONObject("vod")
             ?: return VideoDetail(id = id, title = "", desc = "", episodes = emptyMap())
-        val episodes = parseEpisodes(json)
         return VideoDetail(
-            id = json.optString("id", id),
-            title = json.optString("title").ifEmpty { json.optString("vod_name") },
-            desc = json.optString("desc").ifEmpty { json.optString("vod_content") },
-            episodes = episodes,
+            id = vod.optString("vod_id", id),
+            title = vod.optString("vod_name"),
+            desc = vod.optString("vod_content"),
+            episodes = parseEpisodes(vod.optString("vod_play_url")),
             sourceKey = site.optString("key")
         )
     }
 
-    /**
-     * TVBox detail responses keep episodes in a `episodes` object (line-name ->
-     * "1|...|2|..." split strings) or a `eps` array of {name, url[]}. Handle both.
-     */
-    private fun parseEpisodes(json: JSONObject): Map<String, List<String>> {
-        val episodes = mutableMapOf<String, List<String>>()
-        json.optJSONArray("eps")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val ep = arr.optJSONObject(i) ?: continue
-                ep.optJSONArray("url")?.let { urls ->
-                    episodes[ep.optString("name", "第${i + 1}集")] =
-                        (0 until urls.length()).map { urls.getString(it) }
-                }
-            }
-        }
-        json.optJSONObject("episodes")?.let { epsObj ->
-            for (key in epsObj.keys()) {
-                val line = epsObj.optString(key)
-                episodes[key] = line.split("§").filter { it.isNotBlank() }
-            }
-        }
-        return episodes
-    }
-
     override suspend fun getPlayUrl(id: String, flag: String): PlayResult {
-        val site = resolveSites().firstOrNull()
-            ?: return PlayResult(url = "", name = "")
+        val site = firstSite() ?: return PlayResult(url = "", name = "")
         val api = site.optString("api")
-        val resp = get("$api/play/$id/$flag")
-        val json = runCatching { JSONObject(resp) }.getOrNull()
-            ?: run {
-                log.w(TAG, "play url not JSON: $resp")
-                return PlayResult(url = resp, name = flag)
-            }
-        val url = json.optString("url").ifEmpty {
-            json.optJSONArray("url")?.optString(0) ?: ""
-        }
-        return PlayResult(url = url, name = json.optString("name", flag))
+        if (api.isBlank()) return PlayResult(url = "", name = "")
+        val resp = get(buildUrl(api, "videoplay", mapOf("ids" to id)))
+        if (resp.isBlank()) return PlayResult(url = "", name = "")
+        val json = JSONObject(resp)
+        val vod = json.optJSONArray("list")?.optJSONObject(0)
+            ?: json.optJSONObject("vod")
+            ?: return PlayResult(url = "", name = "")
+        val episodes = parseEpisodes(vod.optString("vod_play_url"))
+        // flag 形如 "线路索引-集数索引"（1 基，如 "1-1"）；缺省取第一线路第一集
+        val parts = flag.split("-")
+        val lineIdx = (parts.getOrNull(0)?.toIntOrNull()?.minus(1)) ?: 0
+        val epIdx = (parts.getOrNull(1)?.toIntOrNull()?.minus(1)) ?: 0
+        val lines = episodes.values.toList()
+        val line = lines.getOrNull(lineIdx.coerceIn(0, lines.size - 1))
+            ?: return PlayResult(url = "", name = flag)
+        val url = line.getOrNull(epIdx.coerceIn(0, line.size - 1))
+            ?: line.firstOrNull()
+            ?: return PlayResult(url = "", name = flag)
+        return PlayResult(url = url, name = flag)
     }
 
-    /**
-     * Resolve TVBox site configs from Room (enabled, non-blank api). When the
-     * user has imported subscriptions, build a `sites` array from them; the
-     * built-in demo is the fallback.
-     */
-    private suspend fun resolveSites(): List<JSONObject> {
-        videoSourceDao?.let { dao ->
-            val rows = runCatching { dao.all().first() }.getOrDefault(emptyList())
-            val enabled = rows.filter { it.enabled && it.api.isNotBlank() }
-            if (enabled.isNotEmpty()) {
-                log.i(TAG, "using ${enabled.size} Room video source(s)")
-                return enabled.map {
-                    JSONObject(it.rawJson).apply { put("api", it.api) }
-                }
-            }
+    // ---------- 内部 ----------
+
+    private fun parseEpisodes(raw: String): Map<String, List<String>> {
+        val result = LinkedHashMap<String, List<String>>()
+        if (raw.isBlank()) return result
+        for (line in raw.split("\\$\\$\\$")) {
+            val parts = line.split("\\$", limit = 2)
+            if (parts.size < 2) continue
+            val name = parts[0].trim()
+            val urls = parts[1].split("#").map { it.trim() }.filter { it.isNotBlank() }
+            if (name.isNotEmpty() && urls.isNotEmpty()) result[name] = urls
         }
-        log.i(TAG, "falling back to built-in demo tvbox config")
-        return runCatching {
-            val config = JSONObject(SourceBootstrap.defaultTvBoxJson())
-            config.optJSONArray("sites")?.let { (0 until it.length()).map { i -> it.getJSONObject(i) } }
-                ?: emptyList()
-        }.getOrDefault(emptyList())
+        return result
     }
 
-    /**
-     * Resolve the first live source URL for IPTV-style playback. Reads Room
-     * live_sources when present; falls back to the demo config.
-     */
-    suspend fun resolveLiveUrls(): List<String> {
-        liveSourceDao?.let { dao ->
-            val rows = runCatching { dao.all().first() }.getOrDefault(emptyList())
-            val urls = rows.filter { it.enabled && it.url.isNotBlank() }.map { it.url }
-            if (urls.isNotEmpty()) {
-                log.i(TAG, "using ${urls.size} Room live source(s)")
-                return urls
-            }
+    private fun buildUrl(api: String, ac: String, params: Map<String, String>): String {
+        val sb = StringBuilder(api)
+        sb.append(if (api.contains("?")) "&" else "?").append("ac=").append(ac)
+        for ((k, v) in params) {
+            sb.append("&").append(k).append("=").append(URLEncoder.encode(v, "UTF-8"))
         }
-        log.i(TAG, "falling back to built-in demo live config")
-        return runCatching {
-            val config = JSONObject(SourceBootstrap.defaultTvBoxJson())
-            config.optJSONArray("lives")?.let {
-                (0 until it.length()).map { i -> it.getJSONObject(i).optString("url") }
-            } ?: emptyList()
-        }.getOrDefault(emptyList())
+        return sb.toString()
     }
 
-    private suspend fun get(url: String): String =
-        withContext(Dispatchers.IO) {
-            client.newCall(okhttp3.Request.Builder().url(url).build())
-                .execute().use { it.body?.string() ?: "" }
+    private suspend fun firstSite(): JSONObject? {
+        val spider = fetchTvBoxConfig() ?: return null
+        val sites = spider.optJSONArray("sites") ?: return null
+        return if (sites.length() > 0) sites.getJSONObject(0) else null
+    }
+
+    private suspend fun fetchTvBoxConfig(): JSONObject? =
+        try {
+            JSONObject(SourceBootstrap.defaultTvBoxJson())
+        } catch (e: Exception) {
+            null
         }
 
-    companion object {
-        const val TAG = "TvBoxEngine"
+    private suspend fun get(url: String): String {
+        if (url.isBlank()) return ""
+        // 内置演示源兜底
+        if (url.contains("example.com")) {
+            return if (url.contains("ac=detail") || url.contains("ac=videoplay")) {
+                SourceBootstrap.demoVideoDetailBody()
+            } else {
+                SourceBootstrap.demoVideoSearchBody()
+            }
+        }
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                client.newCall(okhttp3.Request.Builder().url(url).build())
+                    .execute().use { it.body?.string() ?: "" }
+            }.getOrDefault("")
+        }
     }
 }

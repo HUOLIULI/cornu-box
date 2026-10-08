@@ -174,3 +174,9 @@
 *.lz
 *.lzma
 *.iso
+
+# Android SDK 本地路径（机器相关，不应提交）
+local.properties
+
+# Android APK 产物（不入 Git，需自行编译）
+*.apk

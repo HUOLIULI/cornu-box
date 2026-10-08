@@ -13,11 +13,16 @@
 
     <application
         android:name=".MediaShellApp"
-        android:allowBackup="true"
-        android:icon="@android:color/transparent"
+        android:allowBackup="false"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+        <!-- 聚合源（书源/影视源/EPG）大量为 http 明文地址，targetSdk 35 默认禁止明文，必须显式放开 -->
+        <!-- allowBackup=false：用户 LLM API Key 存于 DataStore，禁止被 adb backup 提取 -->
 
         <activity
             android:name=".MainActivity"

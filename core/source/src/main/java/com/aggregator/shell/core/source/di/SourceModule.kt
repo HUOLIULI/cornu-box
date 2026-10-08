@@ -1,20 +1,15 @@
 package com.aggregator.shell.core.source.di
 
-import com.aggregator.shell.core.data.local.BookSourceDao
-import com.aggregator.shell.core.data.local.LiveSourceDao
-import com.aggregator.shell.core.data.local.MusicSourceDao
-import com.aggregator.shell.core.data.local.VideoSourceDao
-import com.aggregator.shell.core.source.api.MusicEngine
-import com.aggregator.shell.core.source.api.ReaderEngine
-import com.aggregator.shell.core.source.api.VideoEngine
 import com.aggregator.shell.core.source.engine.LegadoEngine
 import com.aggregator.shell.core.source.engine.LxMusicEngine
 import com.aggregator.shell.core.source.engine.TvBoxEngine
+import com.aggregator.shell.core.source.api.MusicEngine
+import com.aggregator.shell.core.source.api.ReaderEngine
+import com.aggregator.shell.core.source.api.VideoEngine
 import com.aggregator.shell.core.source.sandbox.JsSandboxExecutor
-import com.aggregator.shell.core.source.sandbox.NoOpPythonRuntime
 import com.aggregator.shell.core.source.sandbox.PythonRuntime
+import com.aggregator.shell.core.source.sandbox.NoOpPythonRuntime
 import com.aggregator.shell.core.source.sandbox.RhinoJsExecutor
-import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -47,28 +42,24 @@ object SourceModule {
     @Singleton
     fun provideReaderEngine(
         client: OkHttpClient,
-        js: JsSandboxExecutor,
-        bookSourceDao: BookSourceDao
+        js: JsSandboxExecutor
     ): ReaderEngine =
-        LegadoEngine(client, js, bookSourceDao)
+        LegadoEngine(client, js)
 
     @Provides
     @Singleton
     fun provideVideoEngine(
         client: OkHttpClient,
         js: JsSandboxExecutor,
-        py: PythonRuntime,
-        videoSourceDao: VideoSourceDao,
-        liveSourceDao: LiveSourceDao
+        py: PythonRuntime
     ): VideoEngine =
-        TvBoxEngine(client, js, py, videoSourceDao, liveSourceDao)
+        TvBoxEngine(client, js, py)
 
     @Provides
     @Singleton
     fun provideMusicEngine(
         client: OkHttpClient,
-        js: JsSandboxExecutor,
-        musicSourceDao: MusicSourceDao
+        js: JsSandboxExecutor
     ): MusicEngine =
-        LxMusicEngine(client, js, musicSourceDao)
+        LxMusicEngine(client, js)
 }

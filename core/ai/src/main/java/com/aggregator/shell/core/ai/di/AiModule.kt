@@ -1,5 +1,7 @@
-package com.aggregator.shell.core.ai
+package com.aggregator.shell.core.ai.di
 
+import com.aggregator.shell.core.ai.AiSourceAssistant
+import com.aggregator.shell.core.ai.HeuristicAssistant
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn

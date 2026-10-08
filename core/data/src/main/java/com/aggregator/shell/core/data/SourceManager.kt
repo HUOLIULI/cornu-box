@@ -1,6 +1,6 @@
 package com.aggregator.shell.core.data
 
-import com.aggregator.shell.core.data.local.SubscriptionEntity
+import com.aggregator.shell.core.data.local.entity.SubscriptionEntity
 
 /**
  * High-level source management facade. Concrete per-module repositories are

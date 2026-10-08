@@ -60,10 +60,6 @@ object CoreDataModule {
 
     @Provides
     @Singleton
-    fun provideSourceLogDao(db: AppDatabase): SourceLogDao = db.sourceLogDao()
-
-    @Provides
-    @Singleton
     fun provideBookshelfDao(db: AppDatabase): BookshelfDao = db.bookshelfDao()
 
     @Provides
@@ -73,6 +69,10 @@ object CoreDataModule {
     @Provides
     @Singleton
     fun providePlayHistoryDao(db: AppDatabase): PlayHistoryDao = db.playHistoryDao()
+
+    @Provides
+    @Singleton
+    fun provideSourceLogDao(db: AppDatabase): SourceLogDao = db.sourceLogDao()
 
     @Provides
     @Singleton

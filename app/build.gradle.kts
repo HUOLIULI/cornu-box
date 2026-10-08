@@ -14,8 +14,8 @@ android {
         applicationId = "com.aggregator.shell"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 5
+        versionName = "1.5.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -38,6 +38,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
+    kotlinOptions { jvmTarget = "17" }
 
     packaging {
         resources.excludes += setOf(

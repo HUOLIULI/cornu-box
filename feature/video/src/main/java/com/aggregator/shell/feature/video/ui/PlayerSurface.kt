@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -16,13 +17,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.ui.PlayerView
 import com.aggregator.shell.core.media.danmaku.DanmakuItem
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 
 @Composable
 fun DanmakuOverlay(
@@ -31,8 +36,10 @@ fun DanmakuOverlay(
 ) {
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
-        while (true) {
-            kotlinx.coroutines.delay(40L)
+        val ctx = kotlinx.coroutines.currentCoroutineContext()
+        val job = ctx[kotlinx.coroutines.Job]
+        while (job?.isActive == true) {
+            delay(40L)
             tick = (tick + 1) % 10_000
         }
     }
@@ -61,19 +68,30 @@ fun PlayerSurface(
     danmaku: List<DanmakuItem>
 ) {
     val context = LocalContext.current
-    val surfaceColor = MaterialTheme.colorScheme.surface
+
     LaunchedEffect(item) {
-        try {
+        runCatching {
             player.initialize(context)
             player.prepare(item)
-        } catch (e: Exception) {
-            // error surfaced via player state
         }
     }
+
+    DisposableEffect(Unit) {
+        onDispose { player.release() }
+    }
+
     Box(Modifier.fillMaxSize()) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawRect(color = surfaceColor)
-        }
+        // 真实视频渲染：PlayerView 绑定 ExoPlayer 输出
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    useController = true
+                    controllerAutoShow = true
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+            update = { view -> player.attachPlayerView(view) }
+        )
         DanmakuOverlay(
             items = danmaku,
             modifier = Modifier
@@ -83,7 +101,9 @@ fun PlayerSurface(
         )
         Text(
             text = item.name.ifEmpty { item.url },
-            modifier = Modifier.padding(8.dp),
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(8.dp),
             style = MaterialTheme.typography.labelSmall
         )
     }

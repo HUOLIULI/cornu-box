@@ -4,6 +4,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.ByteArrayInputStream
+import java.util.Calendar
+import java.util.TimeZone
 import java.util.zip.GZIPInputStream
 
 data class EpgChannel(
@@ -23,8 +25,10 @@ data class EpgProgram(
 )
 
 /**
- * Minimal XMLTV parser. Sufficient for the shell MVP: extracts channels and
- * each channel's programmes. Supports plain XML and gzip.
+ * XMLTV (DVB) EPG parser。支持明文与 gzip 源，解析频道（含 icon）与节目单。
+ *
+ * XMLTV 时间格式：`20261008120000 +0800`（本地时间 + 时区偏移），
+ * 统一转换为 UTC epoch millis。
  */
 class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
 
@@ -44,7 +48,6 @@ class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
 
     fun parse(xml: String): List<EpgChannel> {
         val channels = mutableListOf<EpgChannel>()
-        val channelIds = LinkedHashMap<String, String>() // id -> displayName
         val programs = LinkedHashMap<String, MutableList<EpgProgram>>()
 
         var inChannel = false
@@ -53,25 +56,28 @@ class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
         var inDesc = false
         var channelId = ""
         var displayName = ""
+        var channelIcon: String? = null
         var progChannel = ""
         var start = 0L
         var end = 0L
         var title = ""
         var desc: String? = null
-        var icon: String? = null
+        var progIcon: String? = null
 
         fun flushProgramme() {
             if (progChannel.isNotBlank()) {
                 programs.getOrPut(progChannel) { mutableListOf() }.add(
-                    EpgProgram(progChannel, title.trim(), start, end, desc?.trim(), icon)
+                    EpgProgram(progChannel, title.trim(), start, end, desc?.trim(), progIcon)
                 )
             }
-            title = ""; desc = null; icon = null
+            title = ""
+            desc = null
+            progIcon = null
         }
 
         fun flushChannel() {
             if (channelId.isNotBlank()) {
-                channels.add(EpgChannel(channelId, displayName, null, programs[channelId] ?: emptyList()))
+                channels.add(EpgChannel(channelId, displayName, channelIcon, programs[channelId] ?: emptyList()))
             }
         }
 
@@ -97,10 +103,13 @@ class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
                 t.startsWith("<channel") -> {
                     inChannel = true
                     channelId = attr(t, "id").orEmpty()
+                    displayName = ""
+                    channelIcon = null
                 }
                 t.startsWith("</channel") -> { inChannel = false; flushChannel() }
                 inChannel && t.startsWith("<display-name") ->
-                    displayName = attr(t, "lang")?.let { displayName } ?: (t.substringAfter(">").substringBefore("</").trim()).ifEmpty { displayName }
+                    displayName = inlineText(t).ifEmpty { displayName }
+                inChannel && t.startsWith("<icon") -> channelIcon = attr(t, "src")
                 t.startsWith("<programme") -> {
                     inProgramme = true
                     progChannel = attr(t, "channel").orEmpty()
@@ -108,11 +117,13 @@ class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
                     end = parseTs(attr(t, "stop"))
                 }
                 t.startsWith("</programme") -> { inProgramme = false; flushProgramme() }
-                t.startsWith("</title") -> inTitle = false
-                t.startsWith("</desc") -> inDesc = false
-                inProgramme && t.startsWith("<icon") -> icon = attr(t, "src")
-                inTitle -> title += t.substringAfter(">").substringBefore("<")
-                inDesc -> desc = (desc ?: "") + t.substringAfter(">").substringBefore("<")
+                inProgramme && t.startsWith("<title") -> inTitle = true
+                inProgramme && t.startsWith("</title") -> inTitle = false
+                inProgramme && t.startsWith("<desc") -> inDesc = true
+                inProgramme && t.startsWith("</desc") -> inDesc = false
+                inProgramme && t.startsWith("<icon") -> progIcon = attr(t, "src")
+                inTitle -> title += inlineText(t)
+                inDesc -> desc = (desc ?: "") + inlineText(t)
             }
         }
         return channels
@@ -121,28 +132,41 @@ class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
     private fun attr(line: String, name: String): String? =
         Regex("""$name="([^"]*)"""").find(line)?.groupValues?.get(1)
 
+    private fun inlineText(line: String): String =
+        if (line.contains("</")) line.substringAfter(">").substringBefore("</").trim()
+        else if (line.contains(">")) line.substringAfter(">").trim()
+        else ""
+
+    /**
+     * 解析 XMLTV 时间：`20261008120000 +0800`。
+     * 支持纯 14 位（视为 UTC）与带 `±HHMM` 偏移（本地时间转 UTC）。
+     */
     private fun parseTs(s: String?): Long {
         if (s.isNullOrBlank()) return 0L
-        val m = Regex("""(\d{8})(\d{4})(\d{2})\s*(?:([+-]\d{2}):?(\d{2})|Z)?""").find(s) ?: return 0L
-        val date = m.groupValues[1]
-        val time = m.groupValues[2]
-        val year = date.substring(0, 4).toIntOrNull() ?: return 0L
-        val month = date.substring(4, 6).toIntOrNull() ?: return 0L
-        val day = date.substring(6, 8).toIntOrNull() ?: return 0L
-        val hour = time.substring(0, 2).toIntOrNull() ?: return 0L
-        val minute = time.substring(2, 4).toIntOrNull() ?: return 0L
-        val second = m.groupValues[3].toIntOrNull() ?: 0
-        val tzSign = m.groupValues[4]
-        val tzHours = m.groupValues[5].toIntOrNull() ?: 0
-        val tzMinutes = m.groupValues[6].toIntOrNull() ?: 0
-        val cal = java.util.Calendar.getInstance()
-        cal.clear()
-        cal.set(year, month - 1, day, hour, minute, second)
-        var epochMs = cal.timeInMillis
-        if (tzSign != null) {
-            val offsetSec = (tzHours * 3600 + tzMinutes * 60) * if (tzSign == "-") -1 else 1
-            epochMs -= offsetSec * 1000L
+        val full = Regex("""(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-])(\d{2})(\d{2})""")
+            .find(s.trim())
+        if (full != null) {
+            val g = full.groupValues
+            val utc = toUtcMillis(g[1], g[2], g[3], g[4], g[5], g[6])
+            val offsetMin = g[8].toInt() * 60 + g[9].toInt()
+            val sign = if (g[7] == "+") -1 else 1
+            return utc + offsetMin * 60_000L * sign
         }
-        return epochMs
+        val plain = Regex("""(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})""").find(s.trim())
+        if (plain != null) {
+            val g = plain.groupValues
+            return toUtcMillis(g[1], g[2], g[3], g[4], g[5], g[6])
+        }
+        return 0L
+    }
+
+    private fun toUtcMillis(y: String, mo: String, d: String, h: String, mi: String, s: String): Long {
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        cal.clear()
+        cal.set(
+            y.toInt(), mo.toInt() - 1, d.toInt(),
+            h.toInt(), mi.toInt(), s.toInt()
+        )
+        return cal.timeInMillis
     }
 }
