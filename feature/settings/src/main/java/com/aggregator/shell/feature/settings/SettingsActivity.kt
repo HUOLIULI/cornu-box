@@ -21,19 +21,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aggregator.shell.core.ai.AiSourceAssistant
+import com.aggregator.shell.core.common.ModuleType
+import com.aggregator.shell.core.data.SubscriptionManager
 import com.aggregator.shell.core.ui.theme.AppTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class SettingsActivity : ComponentActivity() {
 
     @Inject
     lateinit var assistant: AiSourceAssistant
+
+    @Inject
+    lateinit var subscriptions: SubscriptionManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,7 +49,9 @@ class SettingsActivity : ComponentActivity() {
 
     @Composable
     private fun SettingsShell() {
+        val scope = rememberCoroutineScope()
         var url by remember { mutableStateOf("") }
+        var module by remember { mutableStateOf("video") }
         var msg by remember { mutableStateOf("") }
 
         Column(
@@ -53,14 +62,23 @@ class SettingsActivity : ComponentActivity() {
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
-                label = { Text("源订阅 URL / 本地 JSON 文件") },
+                label = { Text("源订阅 URL") },
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
-                    msg = "已请求导入：$url（订阅管理器将拉取并去重合并）"
-                }) { Text("导入/订阅") }
+                    if (url.isBlank()) { msg = "请先填写订阅 URL"; return@Button }
+                    scope.launch {
+                        msg = "正在拉取并去重合并：$url ..."
+                        val ok = runCatching {
+                            subscriptions.addSubscription("sub-${System.currentTimeMillis()}", module, url)
+                        }.isSuccess
+                        msg = if (ok) "已订阅：$url（拉取成功，已按 api/url 去重合并入库）"
+                              else "订阅失败，请检查 URL 可达性"
+                    }
+                }) { Text("订阅（$module）") }
             }
             if (msg.isNotEmpty()) {
                 Spacer(Modifier.height(8.dp))
@@ -71,26 +89,37 @@ class SettingsActivity : ComponentActivity() {
             Text("AI 制源助手", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "默认使用离线启发式助手（HeuristicAssistant）。" +
-                        "若要启用云端 LLM，请在下方填入 Base URL 与 API Key（由您自行提供，" +
-                        "应用不会读取构建环境中的任何 Key）。",
+                text = "默认离线启发式助手。下方可生成候选源规则、或对失败日志做修复建议。" +
+                        "云端 LLM 的 Base URL 与 Key 由您自行提供并写入设置，应用不读取构建环境中的任何 Key。",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(8.dp))
-            var baseUrl by remember { mutableStateOf("") }
-            var apiKey by remember { mutableStateOf("") }
+            var sampleUrl by remember { mutableStateOf("") }
+            var aiMsg by remember { mutableStateOf("") }
             OutlinedTextField(
-                value = baseUrl, onValueChange = { baseUrl = it },
-                label = { Text("LLM Base URL（占位）") },
+                value = sampleUrl,
+                onValueChange = { sampleUrl = it },
+                label = { Text("目标页 URL（制源）") },
+                singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { v -> apiKey = v },
-                label = { Text("LLM API Key（占位，不会上传）") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    scope.launch {
+                        aiMsg = "制源中..."
+                        val r = runCatching {
+                            assistant.generateSource(sampleUrl, ModuleType.VIDEO, sampleHtml = null)
+                        }.getOrNull()
+                        aiMsg = if (r != null) "候选规则：${r.explain}\n配置：${r.config}"
+                              else "制源失败：URL 为空或不可达"
+                    }
+                }) { Text("生成候选源") }
+            }
+            if (aiMsg.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(aiMsg, style = MaterialTheme.typography.bodySmall)
+            }
 
             Spacer(Modifier.height(16.dp))
             Text("关于", style = MaterialTheme.typography.titleLarge)

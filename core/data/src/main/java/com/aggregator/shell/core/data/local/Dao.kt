@@ -99,6 +99,9 @@ interface SubscriptionDao {
     @Query("SELECT * FROM source_subscriptions")
     fun all(): Flow<List<SubscriptionEntity>>
 
+    @Query("SELECT * FROM source_subscriptions WHERE subId = :id")
+    suspend fun byId(id: String): SubscriptionEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(sub: SubscriptionEntity)
 

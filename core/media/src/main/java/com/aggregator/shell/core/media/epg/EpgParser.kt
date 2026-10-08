@@ -107,5 +107,28 @@ class EpgParser(private val client: OkHttpClient = OkHttpClient()) {
     private fun attr(line: String, name: String): String? =
         Regex("""$name="([^"]*)"""").find(line)?.groupValues?.get(1)
 
-    private fun parseTs(s: String?): Long = if (s.isNullOrBlank()) 0L else 0L
+    private fun parseTs(s: String?): Long {
+        if (s.isNullOrBlank()) return 0L
+        val m = Regex("""(\d{8})(\d{4})(\d{2})\s*(?:([+-]\d{2}):?(\d{2})|Z)?""").find(s) ?: return 0L
+        val date = m.groupValues[1]
+        val time = m.groupValues[2]
+        val year = date.substring(0, 4).toIntOrNull() ?: return 0L
+        val month = date.substring(4, 6).toIntOrNull() ?: return 0L
+        val day = date.substring(6, 8).toIntOrNull() ?: return 0L
+        val hour = time.substring(0, 2).toIntOrNull() ?: return 0L
+        val minute = time.substring(2, 4).toIntOrNull() ?: return 0L
+        val second = m.groupValues[3].toIntOrNull() ?: 0
+        val tzSign = m.groupValues[4]
+        val tzHours = m.groupValues[5].toIntOrNull() ?: 0
+        val tzMinutes = m.groupValues[6].toIntOrNull() ?: 0
+        val cal = java.util.Calendar.getInstance()
+        cal.clear()
+        cal.set(year, month - 1, day, hour, minute, second)
+        var epochMs = cal.timeInMillis
+        if (tzSign != null) {
+            val offsetSec = (tzHours * 3600 + tzMinutes * 60) * if (tzSign == "-") -1 else 1
+            epochMs -= offsetSec * 1000L
+        }
+        return epochMs
+    }
 }

@@ -11,6 +11,8 @@ import com.aggregator.shell.core.data.local.LiveSourceDao
 import com.aggregator.shell.core.data.local.MusicSourceDao
 import com.aggregator.shell.core.data.local.SubscriptionDao
 import com.aggregator.shell.core.data.local.VideoSourceDao
+import com.aggregator.shell.core.data.local.SourceLogDao
+import kotlinx.coroutines.flow.first
 import com.aggregator.shell.core.data.local.SubscriptionEntity
 import com.aggregator.shell.core.data.local.entity.*
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -167,11 +169,15 @@ class MusicSourceRepoImpl @javax.inject.Inject constructor(
 
 class SubscriptionManagerImpl @javax.inject.Inject constructor(
     private val subscriptionDao: SubscriptionDao,
-    private val videoRepo: VideoSourceRepo,
-    private val readerRepo: ReaderSourceRepo,
-    private val musicRepo: MusicSourceRepo,
+    private val videoDao: VideoSourceDao,
+    private val liveDao: LiveSourceDao,
+    private val bookSourceDao: BookSourceDao,
+    private val musicSourceDao: MusicSourceDao,
+    private val sourceLogDao: SourceLogDao,
     @ApplicationContext private val context: Context
 ) : SubscriptionManager {
+
+    private val client = OkHttpClient.Builder().build()
 
     override suspend fun addSubscription(name: String, module: String, url: String) {
         val sub = SubscriptionEntity(
@@ -186,8 +192,123 @@ class SubscriptionManagerImpl @javax.inject.Inject constructor(
     }
 
     override suspend fun update(subId: String) {
-        // TODO: look up by subId and pull URL. Placeholder for now.
+        val sub = subscriptionDao.byId(subId) ?: return
+        val resp = withContext(Dispatchers.IO) {
+            client.newCall(
+                okhttp3.Request.Builder().url(sub.url).build()
+            ).execute()
+        }
+        resp.use { r ->
+            if (!r.isSuccessful) {
+                sourceLogDao.add(SourceLogEntity(
+                    id = "log-${UUID.randomUUID()}",
+                    ts = System.currentTimeMillis(),
+                    category = "network",
+                    url = sub.url,
+                    method = "GET",
+                    status = r.code,
+                    detail = "订阅更新失败：HTTP ${r.code}"
+                ))
+                return
+            }
+            val body = r.body?.string() ?: ""
+            when (sub.moduleType) {
+                "video" -> upsertVideoDedup(sub.name, body, sub.url)
+                "reader" -> upsertReaderDedup(sub.name, body, sub.url)
+                "music" -> upsertMusicDedup(sub.name, body, sub.url)
+                else -> { /* unknown module; skip */ }
+            }
+            // mark subscription updated
+            subscriptionDao.upsert(sub.copy(
+                lastUpdate = System.currentTimeMillis(),
+                rawJson = body.take(4096)
+            ))
+        }
+    }
+
+    /**
+     * Dedup merge: parse video JSON, upsert by site `api` URL as the stable key.
+     * Existing rows with the same `api` are replaced; new rows are inserted.
+     */
+    private suspend fun upsertVideoDedup(name: String, body: String, subUrl: String) {
+        val parsed = runCatching { org.json.JSONObject(body) }.getOrNull() ?: return
+        val sites = parsed.optJSONArray("sites")
+        (0 until (sites?.length() ?: 0)).forEach { i ->
+            val site = sites!!.getJSONObject(i)
+            val stableId = "tvb-" + site.optString("api").hashCode()
+            videoDao.upsert(
+                VideoSourceEntity(
+                    sourceId = stableId,
+                    name = site.optString("name", "未命名源 $i"),
+                    api = site.optString("api", ""),
+                    spider = site.optString("spider", ""),
+                    ext = site.optString("ext", ""),
+                    enabled = true,
+                    rawJson = site.toString(),
+                    lastUpdate = System.currentTimeMillis()
+                )
+            )
+        }
+        val lives = parsed.optJSONArray("lives")
+        (0 until (lives?.length() ?: 0)).forEach { i ->
+            val live = lives!!.getJSONObject(i)
+            val stableId = "live-" + live.optString("url").hashCode()
+            liveDao.upsert(
+                LiveSourceEntity(
+                    sourceId = stableId,
+                    name = live.optString("name", "直播 $i"),
+                    url = live.optString("url", ""),
+                    epg = live.optString("epg", ""),
+                    group = live.optString("group", ""),
+                    enabled = true,
+                    lastUpdate = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    private suspend fun upsertReaderDedup(name: String, body: String, subUrl: String) {
+        val parsed = runCatching {
+            when {
+                body.trimStart().startsWith("[") -> org.json.JSONArray(body)
+                else -> org.json.JSONArray(org.json.JSONObject(body).optString("bookSourceList", body))
+            }
+        }.getOrNull()
+        val arr = parsed ?: runCatching { org.json.JSONArray(body) }.getOrNull() ?: return
+        (0 until arr.length()).forEach { i ->
+            val src = arr.getJSONObject(i)
+            val stableId = "bk-" + src.optString("bookSourceUrl").hashCode()
+            bookSourceDao.upsert(
+                BookSourceEntity(
+                    sourceId = stableId,
+                    name = src.optString("bookSourceName", "书源 $i"),
+                    group = src.optString("bookSourceGroup", ""),
+                    url = src.optString("bookSourceUrl", ""),
+                    enabled = true,
+                    rawJson = src.toString(),
+                    lastUpdate = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    private suspend fun upsertMusicDedup(name: String, body: String, subUrl: String) {
+        val stableId = "mus-" + subUrl.hashCode()
+        musicSourceDao.upsert(
+            MusicSourceEntity(
+                sourceId = stableId,
+                name = name,
+                version = "1.0.0",
+                scriptPath = subUrl,
+                remoteUrl = subUrl,
+                enabled = true,
+                isBuiltin = false
+            )
+        )
     }
 
     override suspend fun remove(subId: String) = subscriptionDao.remove(subId)
+
+    override suspend fun listSubscriptions(): List<SubscriptionEntity> =
+        subscriptionDao.all().first()
 }
