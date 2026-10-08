@@ -16,6 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.pow
@@ -26,17 +27,26 @@ data class PlayMediaItem(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val name: String = "",
-    val isHls: Boolean = url.endsWith(".m3u8", true)
+    val isHls: Boolean = url.endsWith(".m3u8", true),
+    val seekPositionMs: Long = 0L
 )
 
 interface PlayerCore {
     val state: StateFlow<PlayerState>
+    /** 播放位置（毫秒）的实时流，供进度条 / 歌词同步等 UI 订阅。 */
+    val positionMs: StateFlow<Long>
     fun initialize(context: Context)
     suspend fun prepare(item: PlayMediaItem)
     fun switchUrl(item: PlayMediaItem)
     fun pause()
     fun resume()
     fun release()
+
+    /** 读取当前播放位置（毫秒），用于断点续播。 */
+    fun currentPositionMs(): Long
+
+    /** 立即定位到指定位置（毫秒）。 */
+    fun seekTo(positionMs: Long)
 
     /** 将 ExoPlayer 输出绑定到 PlayerView（视频画面渲染入口）。 */
     fun attachPlayerView(view: PlayerView)
@@ -50,11 +60,17 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     private var player: ExoPlayer? = null
     private var pendingView: PlayerView? = null
     private var current: PlayMediaItem? = null
+    private var pendingSeekMs: Long = 0L
+    private var seekApplied = false
     private var retryCount = 0
     private var retryJob: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val _state = MutableStateFlow(PlayerState.Idle)
     override val state: StateFlow<PlayerState> = _state.asStateFlow()
+
+    private val _positionMs = MutableStateFlow(0L)
+    override val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
+    private var positionTicker: Job? = null
 
     override fun initialize(context: Context) {
         if (player == null) {
@@ -63,6 +79,14 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
                     override fun onPlayerError(error: PlaybackException) {
                         _state.value = PlayerState.Error
                         scheduleRetry()
+                    }
+
+                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                        applyPendingSeek()
+                    }
+
+                    override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
+                        applyPendingSeek()
                     }
                 })
             }
@@ -94,12 +118,16 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         }
         retryCount = 0
         current = item
+        pendingSeekMs = item.seekPositionMs
+        seekApplied = false
         withContext(Dispatchers.Main) {
             val p = player ?: throw IllegalStateException("Player not initialized")
             p.setMediaItem(MediaItem.fromUri(item.url))
             p.prepare()
             p.playWhenReady = true
             _state.value = PlayerState.Ready
+            applyPendingSeek()
+            startPositionTicker()
         }
     }
 
@@ -128,11 +156,44 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         _state.value = PlayerState.Ready
     }
 
+    override fun currentPositionMs(): Long =
+        player?.currentPosition ?: 0L
+
+    override fun seekTo(positionMs: Long) {
+        player?.seekTo(positionMs.coerceAtLeast(0))
+    }
+
+    private fun applyPendingSeek() {
+        if (seekApplied) return
+        if (pendingSeekMs <= 0L) {
+            seekApplied = true
+            return
+        }
+        val p = player ?: return
+        if (p.playbackState != Player.STATE_READY) return
+        p.seekTo(pendingSeekMs)
+        seekApplied = true
+    }
+
+    private fun startPositionTicker() {
+        positionTicker?.cancel()
+        positionTicker = scope.launch {
+            while (isActive) {
+                _positionMs.value = player?.currentPosition ?: 0L
+                delay(250L)
+            }
+        }
+    }
+
     override fun release() {
         scope.cancel()
+        positionTicker?.cancel()
         player?.release()
         player = null
         pendingView = null
+        pendingSeekMs = 0L
+        seekApplied = false
+        _positionMs.value = 0L
         _state.value = PlayerState.Idle
     }
 

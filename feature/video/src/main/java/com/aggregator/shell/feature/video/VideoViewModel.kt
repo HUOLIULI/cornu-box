@@ -2,6 +2,12 @@ package com.aggregator.shell.feature.video
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aggregator.shell.core.data.local.FavoriteDao
+import com.aggregator.shell.core.data.local.PlayHistoryDao
+import com.aggregator.shell.core.data.local.SearchHistoryDao
+import com.aggregator.shell.core.data.local.entity.FavoriteEntity
+import com.aggregator.shell.core.data.local.entity.PlayHistoryEntity
+import com.aggregator.shell.core.data.local.entity.SearchHistoryEntity
 import com.aggregator.shell.core.media.danmaku.DanmakuItem
 import com.aggregator.shell.core.media.danmaku.DanmakuSource
 import com.aggregator.shell.core.media.epg.EpgProgram
@@ -9,6 +15,7 @@ import com.aggregator.shell.core.media.epg.EpgProvider
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.media.player.PlayerState
+import com.aggregator.shell.core.search.SearchAggregator
 import com.aggregator.shell.core.source.api.PlayResult
 import com.aggregator.shell.core.source.api.VideoDetail
 import com.aggregator.shell.core.source.api.VideoEngine
@@ -18,8 +25,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.UUID
 import javax.inject.Inject
 
 /**
@@ -58,7 +67,11 @@ class VideoViewModel @Inject constructor(
     private val videoEngine: VideoEngine,
     private val playerCore: PlayerCore,
     private val danmakuSource: DanmakuSource,
-    private val epgProvider: EpgProvider
+    private val epgProvider: EpgProvider,
+    private val searchAggregator: SearchAggregator,
+    private val favoriteDao: FavoriteDao,
+    private val playHistoryDao: PlayHistoryDao,
+    private val searchHistoryDao: SearchHistoryDao
 ) : ViewModel() {
 
     private val _play = MutableStateFlow(PlayUiState())
@@ -90,6 +103,14 @@ class VideoViewModel @Inject constructor(
     private val _danmaku = MutableStateFlow(emptyList<DanmakuItem>())
     val danmaku: StateFlow<List<DanmakuItem>> = _danmaku.asStateFlow()
 
+    // ---------- 收藏 ----------
+    private val _favorites = MutableStateFlow(emptyList<FavoriteEntity>())
+    val favorites: StateFlow<List<FavoriteEntity>> = _favorites.asStateFlow()
+
+    // ---------- 搜索历史 ----------
+    private val _searchHistory = MutableStateFlow(emptyList<SearchHistoryEntity>())
+    val searchHistory: StateFlow<List<SearchHistoryEntity>> = _searchHistory.asStateFlow()
+
     /** 当前直播频道的 EPG 节目单快照（正在播 + 即将播 + 频道信息）。 */
     private val _epg = MutableStateFlow(com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList()))
     val epg: StateFlow<com.aggregator.shell.core.media.epg.EpgSnapshot> = _epg.asStateFlow()
@@ -97,9 +118,64 @@ class VideoViewModel @Inject constructor(
     fun refresh(keyword: String = "演示") {
         viewModelScope.launch {
             _loadingResults.value = true
-            val list = runCatching { videoEngine.search(keyword, 1) }.getOrDefault(emptyList())
-            _results.value = list
+            val agg = runCatching { searchAggregator.searchVideos(keyword) }.getOrNull()
+            // 映射回 VideoResult 复用现有列表 UI
+            _results.value = agg?.items?.map {
+                VideoResult(
+                    id = it.contentId,
+                    title = it.title,
+                    coverUrl = it.coverUrl,
+                    type = it.type,
+                    year = it.year,
+                    sourceKey = it.sourceKey
+                )
+            } ?: emptyList()
             _loadingResults.value = false
+        }
+    }
+
+    /** 收藏 / 取消收藏某内容。 */
+    fun toggleFavorite(contentId: String, sourceId: String, title: String, subInfo: String = "") {
+        viewModelScope.launch {
+            val existing = favoriteDao.find("VIDEO", contentId)
+            if (existing == null) {
+                favoriteDao.upsert(
+                    FavoriteEntity(
+                        id = UUID.randomUUID().toString(),
+                        module = "VIDEO",
+                        sourceId = sourceId,
+                        contentId = contentId,
+                        title = title,
+                        subInfo = subInfo,
+                        favoriteTime = System.currentTimeMillis()
+                    )
+                )
+            } else {
+                favoriteDao.remove(existing.id)
+            }
+        }
+    }
+
+    /** 续播：取该内容上次播放位置，无记录则从头。 */
+    suspend fun resumePositionFor(sourceId: String, contentId: String): Long =
+        playHistoryDao.findByContent(sourceId, contentId)?.positionMs ?: 0L
+
+    /** 保存断点：记录当前播放位置供下次续播。 */
+    fun saveResumePosition(sourceId: String, contentId: String, title: String, positionMs: Long) {
+        viewModelScope.launch {
+            if (positionMs > 0L) {
+                playHistoryDao.upsert(
+                    PlayHistoryEntity(
+                        id = "$sourceId:$contentId",
+                        sourceId = sourceId,
+                        contentId = contentId,
+                        title = title,
+                        positionMs = positionMs,
+                        module = "VIDEO",
+                        updated = System.currentTimeMillis()
+                    )
+                )
+            }
         }
     }
 
@@ -120,11 +196,22 @@ class VideoViewModel @Inject constructor(
         }
     }
 
-    /** 加载 IPTV 列表：解析内置 TVBox lives 配置。 */
+    /** 加载 IPTV 列表：优先读 Room 直播源表（用户导入的 IPTV），空则回退内置演示。 */
     fun loadLives() {
         viewModelScope.launch {
             _loadingLives.value = true
-            _lives.value = parseLives(SourceBootstrap.defaultTvBoxJson())
+            val tvBoxEngine = videoEngine as? com.aggregator.shell.core.source.engine.TvBoxEngine
+            val lives = runCatching { tvBoxEngine?.liveChannels()?.mapNotNull { def ->
+                if (def.url.isBlank()) null
+                else LiveChannel(
+                    name = def.name,
+                    url = def.url,
+                    group = def.group,
+                    isHls = def.url.endsWith(".m3u8", true),
+                    epg = def.epg
+                )
+            } }.getOrNull()
+            _lives.value = lives ?: parseLives(com.aggregator.shell.core.source.engine.SourceBootstrap.defaultTvBoxJson())
             _loadingLives.value = false
         }
     }
@@ -184,7 +271,8 @@ class VideoViewModel @Inject constructor(
                 return@launch
             }
             val play = runCatching { videoEngine.getPlayUrl(item.id, "1-1") }.getOrNull()
-            val media = mediaItemFor(item, play, detail)
+            val resumePos = resumePositionFor(item.sourceKey, item.id)
+            val media = mediaItemFor(item, play, detail, resumePos)
             _play.value = _play.value.copy(
                 loading = false,
                 detail = detail,
@@ -217,23 +305,33 @@ class VideoViewModel @Inject constructor(
     }
 
     fun exitPlayback() {
+        saveCurrentResumePosition()
         playerCore.release()
         _play.value = PlayUiState()
         _danmaku.value = emptyList()
         _epg.value = com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList())
     }
 
+    /** 退出播放前把当前断点写回 Room，供下次续播。 */
+    private fun saveCurrentResumePosition() {
+        val d = _play.value.detail ?: return
+        if (d.title.isBlank()) return
+        saveResumePosition(d.sourceKey, d.id, d.title, playerCore.currentPositionMs())
+    }
+
     private fun mediaItemFor(
         item: VideoResult,
         play: PlayResult?,
-        detail: VideoDetail
+        detail: VideoDetail,
+        seekPositionMs: Long = 0L
     ): PlayMediaItem? {
         val url = play?.url?.takeIf { it.isNotBlank() } ?: return null
         return PlayMediaItem(
             url = url,
             headers = play?.headers ?: emptyMap(),
             name = detail.title.ifBlank { item.title },
-            isHls = url.endsWith(".m3u8", true)
+            isHls = url.endsWith(".m3u8", true),
+            seekPositionMs = seekPositionMs
         )
     }
 
@@ -260,6 +358,12 @@ class VideoViewModel @Inject constructor(
             playerCore.state.collect { state ->
                 _play.value = _play.value.copy(playerState = state)
             }
+        }
+        viewModelScope.launch {
+            favoriteDao.byModule("VIDEO").collectLatest { _favorites.value = it }
+        }
+        viewModelScope.launch {
+            searchHistoryDao.recent().collectLatest { _searchHistory.value = it }
         }
         refresh()
         loadDramas()

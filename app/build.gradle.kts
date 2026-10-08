@@ -64,6 +64,7 @@ dependencies {
     implementation(project(":feature:reader"))
     implementation(project(":feature:music"))
     implementation(project(":feature:settings"))
+    implementation(project(":feature:my"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

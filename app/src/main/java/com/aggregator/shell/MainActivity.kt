@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -36,6 +37,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.aggregator.shell.core.ui.theme.AppTheme
 import com.aggregator.shell.feature.music.MusicActivity
+import com.aggregator.shell.feature.my.MyPageActivity
 import com.aggregator.shell.feature.reader.ReaderActivity
 import com.aggregator.shell.feature.settings.SettingsActivity
 import com.aggregator.shell.feature.video.VideoActivity
@@ -65,6 +67,7 @@ class MainActivity : ComponentActivity() {
                     navBarEntry(route = "video", icon = Icons.Filled.Movie, label = "影视", nav = nav, current = current)
                     navBarEntry(route = "reader", icon = Icons.Filled.MenuBook, label = "阅读", nav = nav, current = current)
                     navBarEntry(route = "music", icon = Icons.Filled.MusicNote, label = "音乐", nav = nav, current = current)
+                    navBarEntry(route = "my", icon = Icons.Filled.Person, label = "我的", nav = nav, current = current)
                     navBarEntry(route = "settings", icon = Icons.Filled.Settings, label = "设置", nav = nav, current = current)
                 }
             }
@@ -79,6 +82,7 @@ class MainActivity : ComponentActivity() {
                 composable("video") { BridgePanel("影视", VideoActivity::class.java) }
                 composable("reader") { BridgePanel("阅读", ReaderActivity::class.java) }
                 composable("music") { BridgePanel("音乐", MusicActivity::class.java) }
+                composable("my") { BridgePanel("我的", MyPageActivity::class.java) }
                 composable("settings") { BridgePanel("设置", SettingsActivity::class.java) }
             }
         }

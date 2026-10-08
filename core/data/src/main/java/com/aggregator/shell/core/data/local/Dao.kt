@@ -92,6 +92,9 @@ interface PlayHistoryDao {
 
     @Query("SELECT * FROM play_history WHERE module = :module ORDER BY updated DESC")
     fun byModule(module: String): Flow<List<PlayHistoryEntity>>
+
+    @Query("SELECT * FROM play_history WHERE sourceId = :sourceId AND contentId = :contentId LIMIT 1")
+    suspend fun findByContent(sourceId: String, contentId: String): PlayHistoryEntity?
 }
 
 @Dao
@@ -118,5 +121,35 @@ interface SourceLogDao {
     fun recent(): Flow<List<SourceLogEntity>>
 
     @Query("DELETE FROM source_logs")
+    suspend fun clearAll()
+}
+
+@Dao
+interface FavoriteDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: FavoriteEntity)
+
+    @Query("SELECT * FROM favorites WHERE module = :module ORDER BY favoriteTime DESC")
+    fun byModule(module: String): Flow<List<FavoriteEntity>>
+
+    @Query("SELECT * FROM favorites WHERE module = :module AND contentId = :contentId")
+    suspend fun find(module: String, contentId: String): FavoriteEntity?
+
+    @Query("DELETE FROM favorites WHERE id = :id")
+    suspend fun remove(id: String)
+
+    @Query("DELETE FROM favorites WHERE module = :module")
+    suspend fun clearModule(module: String)
+}
+
+@Dao
+interface SearchHistoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(q: SearchHistoryEntity)
+
+    @Query("SELECT * FROM search_history ORDER BY ts DESC LIMIT 50")
+    fun recent(): Flow<List<SearchHistoryEntity>>
+
+    @Query("DELETE FROM search_history")
     suspend fun clearAll()
 }

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -26,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -67,8 +69,23 @@ class VideoActivity : ComponentActivity() {
 
     private val vm: VideoViewModel by viewModels()
 
+    companion object {
+        /** 从「我的」追剧夹拉起指定内容的播放（按 contentId 定位）。 */
+        fun openContent(ctx: android.content.Context, favorite: com.aggregator.shell.core.data.local.entity.FavoriteEntity) {
+            ctx.startActivity(
+                android.content.Intent(ctx, VideoActivity::class.java)
+                    .putExtra("extra_content_id", favorite.contentId)
+                    .putExtra("extra_source_id", favorite.sourceId)
+                    .putExtra("extra_title", favorite.title)
+            )
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val extraContentId = intent.getStringExtra("extra_content_id")
+        val extraSourceId = intent.getStringExtra("extra_source_id")
+        val extraTitle = intent.getStringExtra("extra_title")
         setContent {
             AppTheme {
                 var tabIndex by remember { mutableIntStateOf(0) }
@@ -83,6 +100,19 @@ class VideoActivity : ComponentActivity() {
                         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     }
                 }
+                // 从「我的」追剧夹跳转：直接打开该内容播放
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    if (extraContentId != null && extraSourceId != null) {
+                        vm.onItemClicked(
+                            com.aggregator.shell.core.source.api.VideoResult(
+                                id = extraContentId,
+                                title = extraTitle.orEmpty(),
+                                coverUrl = "",
+                                sourceKey = extraSourceId
+                            )
+                        )
+                    }
+                }
                 val playState = vm.play.collectAsState()
                 val results = vm.results.collectAsState()
                 val loading = vm.loadingResults.collectAsState()
@@ -92,6 +122,8 @@ class VideoActivity : ComponentActivity() {
                 val loadingLives = vm.loadingLives.collectAsState()
                 val danmaku = vm.danmaku.collectAsState()
                 val epg = vm.epg.collectAsState()
+                val favorites = vm.favorites.collectAsState()
+                val searchHistory = vm.searchHistory.collectAsState()
                 val inPlayback = playState.value.current != null
 
                 Scaffold(
@@ -122,18 +154,31 @@ class VideoActivity : ComponentActivity() {
                                 player = playerCore,
                                 danmaku = danmaku.value,
                                 epg = epg.value,
-                                onSwitch = { line, ep -> vm.switchEpisode(line, ep) }
+                                onSwitch = { line, ep -> vm.switchEpisode(line, ep) },
+                                onFavorite = { _ ->
+                                    val d = playState.value.detail
+                                    if (d != null) {
+                                        vm.toggleFavorite(d.id, d.sourceKey, d.title, d.desc)
+                                    }
+                                }
                             )
                         } else {
                             TabRow(selectedTabIndex = tabIndex) {
                                 Tab(selected = tabIndex == 0, onClick = { tabIndex = 0 }, text = { Text("点播") })
                                 Tab(selected = tabIndex == 1, onClick = { tabIndex = 1 }, text = { Text("短剧") })
                                 Tab(selected = tabIndex == 2, onClick = { tabIndex = 2 }, text = { Text("IPTV") })
+                                Tab(selected = tabIndex == 3, onClick = { tabIndex = 3 }, text = { Text("追剧夹") })
                             }
                             Spacer(Modifier.height(8.dp))
                             when {
-                                loading.value -> LoadingBox()
-                                tabIndex == 0 -> VodoList(items = results.value) { vm.onItemClicked(it) }
+                                loading.value && tabIndex == 0 -> LoadingBox()
+                                tabIndex == 0 -> Column(Modifier.fillMaxSize()) {
+                                    SearchHistoryChips(
+                                        history = searchHistory.value,
+                                        onPick = { kw -> vm.refresh(kw) }
+                                    )
+                                    VodoList(items = results.value) { vm.onItemClicked(it) }
+                                }
                                 tabIndex == 1 -> DramaPager(
                                     episodes = dramas.value,
                                     loading = loadingDramas.value,
@@ -146,6 +191,21 @@ class VideoActivity : ComponentActivity() {
                                     loading = loadingLives.value,
                                     onSelect = { c -> vm.switchLive(c) },
                                     current = playState.value.current
+                                )
+                                tabIndex == 3 -> FavoriteList(
+                                    favorites = favorites.value,
+                                    onOpen = { fav ->
+                                        val item = VideoResult(
+                                            id = fav.contentId,
+                                            title = fav.title,
+                                            coverUrl = "",
+                                            sourceKey = fav.sourceId
+                                        )
+                                        vm.onItemClicked(item)
+                                    },
+                                    onUnfavorite = { fav ->
+                                        vm.toggleFavorite(fav.contentId, fav.sourceId, fav.title)
+                                    }
                                 )
                             }
                         }
@@ -304,7 +364,8 @@ private fun PlaybackScreen(
     player: PlayerCore,
     danmaku: List<DanmakuItem>,
     epg: EpgSnapshot,
-    onSwitch: (Int, Int) -> Unit
+    onSwitch: (Int, Int) -> Unit,
+    onFavorite: (com.aggregator.shell.core.source.api.VideoDetail) -> Unit
 ) {
     val current = state.current
     Column(Modifier.fillMaxSize()) {
@@ -316,6 +377,14 @@ private fun PlaybackScreen(
                 PlayerSurface(item = current, player = player, danmaku = danmaku)
                 if (epg.nowPlaying != null || epg.upcoming.isNotEmpty()) EpgPanel(epg)
                 EpisodeSelector(state = state, onSwitch = onSwitch)
+                if (state.detail != null) {
+                    androidx.compose.material3.OutlinedButton(
+                        onClick = { onFavorite(state.detail!!) },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text("收藏到追剧夹")
+                    }
+                }
             }
             else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(state.error ?: "未选择媒体")
@@ -408,6 +477,68 @@ private fun VideoCard(title: String, subtitle: String, onClick: () -> Unit) {
         Column(Modifier.padding(12.dp)) {
             Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+/** 最近搜索 chips：点击可重搜（横向滚动，避免实验性 FlowRow API）。 */
+@Composable
+private fun SearchHistoryChips(
+    history: List<com.aggregator.shell.core.data.local.entity.SearchHistoryEntity>,
+    onPick: (String) -> Unit
+) {
+    val chips = history.filter { it.module == "VIDEO" && it.keyword.isNotBlank() }.take(8)
+    if (chips.isEmpty()) return
+    LazyRow(
+        Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .padding(horizontal = 8.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+    ) {
+        items(chips) { h ->
+            androidx.compose.material3.AssistChip(
+                onClick = { onPick(h.keyword) },
+                label = { Text(h.keyword) }
+            )
+        }
+    }
+}
+
+/** 追剧夹：已收藏内容，可点开续播 / 取消收藏。 */
+@Composable
+private fun FavoriteList(
+    favorites: List<com.aggregator.shell.core.data.local.entity.FavoriteEntity>,
+    onOpen: (com.aggregator.shell.core.data.local.entity.FavoriteEntity) -> Unit,
+    onUnfavorite: (com.aggregator.shell.core.data.local.entity.FavoriteEntity) -> Unit
+) {
+    if (favorites.isEmpty()) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("追剧夹为空：在播放页点「收藏」加入")
+        }
+        return
+    }
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(favorites) { f ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { onOpen(f) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(f.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "源: ${f.sourceId}${if (f.subInfo.isNotBlank()) " · ${f.subInfo}" else ""}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                IconButton(onClick = { onUnfavorite(f) }) {
+                    Text("取消", style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
     }
 }

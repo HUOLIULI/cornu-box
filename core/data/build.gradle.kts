@@ -29,6 +29,8 @@ dependencies {
     api(libs.androidx.room.runtime)
     api(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    implementation(libs.room.testing)
+    implementation(libs.room.rxjava3)
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.okhttp)
@@ -40,4 +42,9 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.junit)
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.room.testing)
 }

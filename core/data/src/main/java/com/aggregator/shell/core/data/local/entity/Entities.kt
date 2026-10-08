@@ -93,3 +93,26 @@ data class PlayHistoryEntity(
     val module: String,
     val updated: Long = 0L
 )
+
+/**
+ * 用户收藏（追剧夹 / 我的喜欢 / 书签）：按 module 区分影视/音乐/阅读。
+ * 影视收藏记 "看到第 N 集第 M 秒"，音乐收藏记歌单，阅读收藏记书签。
+ */
+@Entity(tableName = "favorites")
+data class FavoriteEntity(
+    @PrimaryKey val id: String,
+    val module: String,
+    val sourceId: String,
+    val contentId: String,
+    val title: String,
+    val subInfo: String = "",
+    val favoriteTime: Long = 0L
+)
+
+@Entity(tableName = "search_history")
+data class SearchHistoryEntity(
+    @PrimaryKey val id: String,
+    val module: String,
+    val keyword: String,
+    val ts: Long = 0L
+)

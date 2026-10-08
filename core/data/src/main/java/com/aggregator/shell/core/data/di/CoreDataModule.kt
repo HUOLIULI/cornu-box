@@ -9,9 +9,12 @@ import com.aggregator.shell.core.data.local.AppDatabase
 import com.aggregator.shell.core.data.local.BookSourceDao
 import com.aggregator.shell.core.data.local.BookshelfDao
 import com.aggregator.shell.core.data.local.EpgDao
+import com.aggregator.shell.core.data.local.FavoriteDao
 import com.aggregator.shell.core.data.local.LiveSourceDao
 import com.aggregator.shell.core.data.local.MusicSourceDao
+import com.aggregator.shell.core.data.local.Migrations
 import com.aggregator.shell.core.data.local.PlayHistoryDao
+import com.aggregator.shell.core.data.local.SearchHistoryDao
 import com.aggregator.shell.core.data.local.SourceLogDao
 import com.aggregator.shell.core.data.local.SubscriptionDao
 import com.aggregator.shell.core.data.local.VideoSourceDao
@@ -35,6 +38,7 @@ object CoreDataModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, "shell.db")
+            .addMigrations(Migrations.MIGRATION_1_2)
             .fallbackToDestructiveMigration()
             .build()
 
@@ -73,6 +77,14 @@ object CoreDataModule {
     @Provides
     @Singleton
     fun provideSourceLogDao(db: AppDatabase): SourceLogDao = db.sourceLogDao()
+
+    @Provides
+    @Singleton
+    fun provideFavoriteDao(db: AppDatabase): FavoriteDao = db.favoriteDao()
+
+    @Provides
+    @Singleton
+    fun provideSearchHistoryDao(db: AppDatabase): SearchHistoryDao = db.searchHistoryDao()
 
     @Provides
     @Singleton
