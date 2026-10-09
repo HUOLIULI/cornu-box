@@ -29,9 +29,10 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -82,14 +83,14 @@ class MainActivity : ComponentActivity() {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
 
-        var latestVideo by androidx.compose.runtime.remember {
-            androidx.compose.runtime.mutableStateOf<PlayHistoryEntity?>(null)
+        var latestVideo by remember {
+            mutableStateOf<PlayHistoryEntity?>(null)
         }
-        var latestBook by androidx.compose.runtime.remember {
-            androidx.compose.runtime.mutableStateOf<BookshelfEntity?>(null)
+        var latestBook by remember {
+            mutableStateOf<BookshelfEntity?>(null)
         }
 
-        androidx.compose.runtime.LaunchedEffect(Unit) {
+        LaunchedEffect(Unit) {
             playHistoryDao.byModule("video").first().firstOrNull()?.let { latestVideo = it }
             bookshelfDao.all().first().firstOrNull()?.let { latestBook = it }
         }
