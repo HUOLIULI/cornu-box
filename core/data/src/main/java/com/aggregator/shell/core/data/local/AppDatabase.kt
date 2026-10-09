@@ -14,9 +14,11 @@ import com.aggregator.shell.core.data.local.entity.*
         EpgProgramEntity::class,
         PlayHistoryEntity::class,
         SubscriptionEntity::class,
-        SourceLogEntity::class
+        SourceLogEntity::class,
+        FavoritesEntity::class,
+        SearchHistoryEntity::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,4 +31,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playHistoryDao(): PlayHistoryDao
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun sourceLogDao(): SourceLogDao
+    abstract fun favoritesDao(): FavoritesDao
+    abstract fun searchHistoryDao(): SearchHistoryDao
 }

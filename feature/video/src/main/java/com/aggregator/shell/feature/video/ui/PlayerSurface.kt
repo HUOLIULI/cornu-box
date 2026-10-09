@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.PlayerView
@@ -43,7 +44,7 @@ fun DanmakuOverlay(
             tick = (tick + 1) % 10_000
         }
     }
-    val density = androidx.compose.ui.platform.LocalDensity.current
+    val density = LocalDensity.current
     Canvas(modifier = modifier) {
         val paint = android.graphics.Paint()
         paint.color = android.graphics.Color.WHITE
@@ -61,11 +62,37 @@ fun DanmakuOverlay(
     }
 }
 
+/**
+ * 片头片尾跳过：每秒检查一次播放位置，命中片头结束或片尾起点时自动 seek。
+ */
+@Composable
+fun SkipIntroOutro(
+    player: PlayerCore,
+    introEndMs: Long,
+    outroStartMs: Long
+) {
+    LaunchedEffect(player, introEndMs, outroStartMs) {
+        while (true) {
+            delay(1_000L)
+            val pos = player.getCurrentPositionMs()
+            val dur = player.getDurationMs()
+            if (introEndMs > 0 && pos < introEndMs && pos > 0L) {
+                player.seekTo(introEndMs)
+            }
+            if (outroStartMs > 0 && dur > 0 && pos >= outroStartMs && pos < dur) {
+                player.seekTo(dur - 5_000L)
+            }
+        }
+    }
+}
+
 @Composable
 fun PlayerSurface(
     item: PlayMediaItem,
     player: PlayerCore,
-    danmaku: List<DanmakuItem>
+    danmaku: List<DanmakuItem>,
+    introEndMs: Long = 0L,
+    outroStartMs: Long = 0L
 ) {
     val context = LocalContext.current
 
@@ -81,7 +108,6 @@ fun PlayerSurface(
     }
 
     Box(Modifier.fillMaxSize()) {
-        // 真实视频渲染：PlayerView 绑定 ExoPlayer 输出
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -99,6 +125,7 @@ fun PlayerSurface(
                 .fillMaxWidth()
                 .height(180.dp)
         )
+        SkipIntroOutro(player, introEndMs, outroStartMs)
         Text(
             text = item.name.ifEmpty { item.url },
             modifier = Modifier

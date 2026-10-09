@@ -15,16 +15,34 @@ interface VideoSourceRepo {
     suspend fun upsertLocal(name: String, configJson: String)
     suspend fun importFromUrl(name: String, url: String)
     suspend fun clear()
+    
+    /** 测试源连接 */
+    suspend fun testConnection(name: String): Boolean
+    
+    /** 获取源列表 */
+    suspend fun listSources(): List<com.aggregator.shell.core.data.local.entity.VideoSourceEntity>
 }
 
 interface ReaderSourceRepo {
     suspend fun upsertLocal(name: String, bookSourceJson: String)
     suspend fun importFromUrl(name: String, url: String)
+    
+    /** 测试书源连接 */
+    suspend fun testConnection(name: String): Boolean
+    
+    /** 获取书源列表 */
+    suspend fun listSources(): List<com.aggregator.shell.core.data.local.entity.BookSourceEntity>
 }
 
 interface MusicSourceRepo {
     suspend fun upsertLocal(name: String, script: String)
     suspend fun importFromUrl(name: String, url: String)
+    
+    /** 测试音乐源连接 */
+    suspend fun testConnection(name: String): Boolean
+    
+    /** 获取音乐源列表 */
+    suspend fun listSources(): List<com.aggregator.shell.core.data.local.entity.MusicSourceEntity>
 }
 
 /**
@@ -37,4 +55,7 @@ interface SubscriptionManager {
     suspend fun update(subId: String)
     suspend fun remove(subId: String)
     suspend fun listSubscriptions(): List<SubscriptionEntity>
+    
+    /** 自动更新订阅 */
+    suspend fun autoUpdate()
 }

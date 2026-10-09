@@ -26,6 +26,9 @@ interface BookshelfDao {
 
     @Query("DELETE FROM bookshelf WHERE bookId = :id")
     suspend fun remove(id: String)
+
+    @Query("SELECT * FROM bookshelf WHERE bookId = :id")
+    suspend fun findById(id: String): BookshelfEntity?
 }
 
 @Dao
@@ -92,6 +95,15 @@ interface PlayHistoryDao {
 
     @Query("SELECT * FROM play_history WHERE module = :module ORDER BY updated DESC")
     fun byModule(module: String): Flow<List<PlayHistoryEntity>>
+
+    @Query("SELECT * FROM play_history WHERE id = :id")
+    suspend fun byId(id: String): PlayHistoryEntity?
+
+    @Query("SELECT * FROM play_history")
+    suspend fun all(): List<PlayHistoryEntity>
+
+    @Query("DELETE FROM play_history")
+    suspend fun clearAll()
 }
 
 @Dao
@@ -119,4 +131,43 @@ interface SourceLogDao {
 
     @Query("DELETE FROM source_logs")
     suspend fun clearAll()
+}
+
+@Dao
+interface FavoritesDao {
+    @Query("SELECT * FROM favorites ORDER BY addedTime DESC")
+    fun all(): Flow<List<FavoritesEntity>>
+
+    @Query("SELECT * FROM favorites WHERE module = :module ORDER BY addedTime DESC")
+    fun byModule(module: String): Flow<List<FavoritesEntity>>
+
+    @Query("SELECT * FROM favorites WHERE category = :category ORDER BY addedTime DESC")
+    fun byCategory(category: String): Flow<List<FavoritesEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(favorite: FavoritesEntity)
+
+    @Query("DELETE FROM favorites WHERE id = :id")
+    suspend fun remove(id: String)
+
+    @Query("DELETE FROM favorites WHERE module = :module")
+    suspend fun clearByModule(module: String)
+
+    @Query("DELETE FROM favorites")
+    suspend fun clearAll()
+}
+
+@Dao
+interface SearchHistoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: SearchHistoryEntity)
+
+    @Query("SELECT * FROM search_history WHERE module = :module ORDER BY lastUsed DESC LIMIT 20")
+    fun byModule(module: String): Flow<List<SearchHistoryEntity>>
+
+    @Query("DELETE FROM search_history WHERE module = :module AND query = :query")
+    suspend fun remove(module: String, query: String)
+
+    @Query("DELETE FROM search_history WHERE module = :module")
+    suspend fun clearByModule(module: String)
 }

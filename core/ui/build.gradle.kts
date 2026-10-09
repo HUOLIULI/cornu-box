@@ -23,5 +23,6 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.androidx.datastore.preferences)
     api(libs.coil.compose)
 }

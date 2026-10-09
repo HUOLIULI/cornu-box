@@ -6,6 +6,9 @@ import com.aggregator.shell.core.source.engine.TvBoxEngine
 import com.aggregator.shell.core.source.api.MusicEngine
 import com.aggregator.shell.core.source.api.ReaderEngine
 import com.aggregator.shell.core.source.api.VideoEngine
+import com.aggregator.shell.core.source.search.AggregateVideoSearch
+import com.aggregator.shell.core.source.search.VideoSearchRepository
+import com.aggregator.shell.core.source.search.VideoSearchRepositoryImpl
 import com.aggregator.shell.core.source.sandbox.JsSandboxExecutor
 import com.aggregator.shell.core.source.sandbox.PythonRuntime
 import com.aggregator.shell.core.source.sandbox.NoOpPythonRuntime
@@ -54,6 +57,30 @@ object SourceModule {
         py: PythonRuntime
     ): VideoEngine =
         TvBoxEngine(client, js, py)
+
+    /**
+     * 已启用视频引擎列表：聚合搜索层并发查询这里的每个引擎。
+     * 新增视频源引擎（如 Cinetry/AVBox 风格的 TVBox 变体）时在此追加，
+     * 或通过 Room 源表的 enabled 开关按条件过滤。
+     */
+    @Provides
+    @Singleton
+    fun provideVideoEngines(
+        videoEngine: VideoEngine
+    ): List<VideoEngine> =
+        listOf(videoEngine)
+
+    @Provides
+    @Singleton
+    fun provideAggregateVideoSearch(engines: List<VideoEngine>): AggregateVideoSearch =
+        AggregateVideoSearch(engines)
+
+    @Provides
+    @Singleton
+    fun provideVideoSearchRepository(
+        aggregate: AggregateVideoSearch
+    ): VideoSearchRepository =
+        VideoSearchRepositoryImpl(aggregate)
 
     @Provides
     @Singleton

@@ -2,24 +2,38 @@ package com.aggregator.shell.feature.video
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.aggregator.shell.core.data.local.FavoritesDao
+import com.aggregator.shell.core.data.local.PlayHistoryDao
+import com.aggregator.shell.core.data.local.SearchHistoryDao
+import com.aggregator.shell.core.data.local.entity.FavoritesEntity
+import com.aggregator.shell.core.data.local.entity.PlayHistoryEntity
+import com.aggregator.shell.core.data.local.entity.SearchHistoryEntity
 import com.aggregator.shell.core.media.danmaku.DanmakuItem
 import com.aggregator.shell.core.media.danmaku.DanmakuSource
-import com.aggregator.shell.core.media.epg.EpgProgram
 import com.aggregator.shell.core.media.epg.EpgProvider
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.media.player.PlayerState
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.aggregator.shell.core.data.di.appDataStore
 import com.aggregator.shell.core.source.api.PlayResult
 import com.aggregator.shell.core.source.api.VideoDetail
 import com.aggregator.shell.core.source.api.VideoEngine
 import com.aggregator.shell.core.source.api.VideoResult
 import com.aggregator.shell.core.source.engine.SourceBootstrap
+import com.aggregator.shell.core.source.search.VideoSearchRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.text.format
 import org.json.JSONObject
+import java.util.UUID
 import javax.inject.Inject
 
 /**
@@ -56,9 +70,13 @@ data class LiveChannel(
 @HiltViewModel
 class VideoViewModel @Inject constructor(
     private val videoEngine: VideoEngine,
+    private val videoSearchRepository: VideoSearchRepository,
     private val playerCore: PlayerCore,
     private val danmakuSource: DanmakuSource,
-    private val epgProvider: EpgProvider
+    private val epgProvider: EpgProvider,
+    private val playHistoryDao: PlayHistoryDao,
+    private val favoritesDao: FavoritesDao,
+    private val searchHistoryDao: SearchHistoryDao
 ) : ViewModel() {
 
     private val _play = MutableStateFlow(PlayUiState())
@@ -94,12 +112,90 @@ class VideoViewModel @Inject constructor(
     private val _epg = MutableStateFlow(com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList()))
     val epg: StateFlow<com.aggregator.shell.core.media.epg.EpgSnapshot> = _epg.asStateFlow()
 
+    // ---------- 播放历史 ----------
+    private val _playHistory = MutableStateFlow(emptyList<PlayHistoryEntity>())
+    val playHistory: StateFlow<List<PlayHistoryEntity>> = _playHistory.asStateFlow()
+
+    // ---------- 收藏 ----------
+    private val _favorites = MutableStateFlow(emptyList<FavoritesEntity>())
+    val favorites: StateFlow<List<FavoritesEntity>> = _favorites.asStateFlow()
+
+    /** 搜索历史（最近 20 条，按使用时间倒序） */
+    private val _searchHistory = MutableStateFlow(emptyList<SearchHistoryEntity>())
+    val searchHistory: StateFlow<List<SearchHistoryEntity>> = _searchHistory.asStateFlow()
+
+    // ---------- 搜索历史 ----------
+
+    // ---------- IPTV 频道收藏 + 换台记忆 ----------
+    private val _liveFavorites = MutableStateFlow(emptyList<FavoritesEntity>())
+    val liveFavorites: StateFlow<List<FavoritesEntity>> = _liveFavorites.asStateFlow()
+
+    /** 记忆上次选中的直播频道 URL，进入 IPTV Tab 时自动恢复（持久化到 DataStore）。 */
+    private var lastLiveChannelUrl: String = ""
+    private val keyLastLiveChannel = stringPreferencesKey("last_live_channel")
+
+    // ---------- 播放进度 / 自动连播 ----------
+    private var currentLineIdx: Int = 0
+    private var currentEpIdx: Int = 0
+    private var dramaIndex: Int = 0
+    private var progressSaveJob: Job? = null
+
+    // ---------- 片头片尾跳过标记 ----------
+    private val _skipIntroUntilMs = MutableStateFlow(0L)
+    val skipIntroUntilMs: StateFlow<Long> = _skipIntroUntilMs.asStateFlow()
+
+    private val _skipOutroStartMs = MutableStateFlow(0L)
+    val skipOutroStartMs: StateFlow<Long> = _skipOutroStartMs.asStateFlow()
+
+    /** 全局 toast 提示（UI 层监听后自动消失） */
+    private val _toast = MutableStateFlow("")
+    val toast: StateFlow<String> = _toast.asStateFlow()
+
+    fun setSkipIntro(ms: Long) {
+        _skipIntroUntilMs.value = ms
+    }
+
+    fun setSkipOutro(startMs: Long) {
+        _skipOutroStartMs.value = startMs
+    }
+
+    /** 返回当前应跳过的目标位置（片头结束 or 片尾开始），0 表示无需跳过。 */
+    fun getSkipTarget(currentMs: Long, durationMs: Long): Long {
+        val introEnd = _skipIntroUntilMs.value
+        if (introEnd > 0 && currentMs < introEnd) return introEnd
+        val outroStart = _skipOutroStartMs.value
+        if (outroStart > 0 && durationMs > 0 && currentMs >= outroStart) return outroStart
+        return 0L
+    }
+
     fun refresh(keyword: String = "演示") {
         viewModelScope.launch {
+            if (keyword.isNotBlank()) {
+                searchHistoryDao.upsert(
+                    SearchHistoryEntity(
+                        query = keyword,
+                        module = "video",
+                        lastUsed = System.currentTimeMillis()
+                    )
+                )
+            }
             _loadingResults.value = true
-            val list = runCatching { videoEngine.search(keyword, 1) }.getOrDefault(emptyList())
-            _results.value = list
+            val items = runCatching { videoSearchRepository.search(keyword, 1) }.getOrDefault(emptyList())
+            _results.value = VideoSearchRepository.toVideoResults(items)
             _loadingResults.value = false
+        }
+    }
+
+    fun getSearchHistory() {
+        viewModelScope.launch {
+            searchHistoryDao.byModule("video").collect { _searchHistory.value = it }
+        }
+    }
+
+    fun removeSearchHistory(query: String) {
+        viewModelScope.launch {
+            searchHistoryDao.remove("video", query)
+            _searchHistory.value = searchHistoryDao.byModule("video").first()
         }
     }
 
@@ -133,6 +229,7 @@ class VideoViewModel @Inject constructor(
     fun switchDrama(index: Int) {
         val d = _dramas.value.getOrNull(index) ?: return
         val item = PlayMediaItem(url = d.url, name = d.title, isHls = d.isHls)
+        dramaIndex = index
         _play.value = _play.value.copy(current = item, error = null, loading = false)
         runCatching { playerCore.switchUrl(item) }
         loadDanmaku(d.title, index + 1)
@@ -148,6 +245,9 @@ class VideoViewModel @Inject constructor(
         _play.value = _play.value.copy(current = item, error = null, loading = false)
         runCatching { playerCore.switchUrl(item) }
         loadEpg(channel)
+        // 添加到播放历史
+        addToHistory(item, "live", channel.name)
+        rememberLiveChannel(channel.url)
     }
 
     /** 点播切集后刷新弹幕。 */
@@ -185,6 +285,8 @@ class VideoViewModel @Inject constructor(
             }
             val play = runCatching { videoEngine.getPlayUrl(item.id, "1-1") }.getOrNull()
             val media = mediaItemFor(item, play, detail)
+            currentLineIdx = 0
+            currentEpIdx = 0
             _play.value = _play.value.copy(
                 loading = false,
                 detail = detail,
@@ -193,6 +295,10 @@ class VideoViewModel @Inject constructor(
                 episodeCount = detail.episodes.values.firstOrNull()?.size ?: 0,
                 error = if (media == null) "无可用播放地址" else null
             )
+            if (media != null) {
+                addToHistory(media, "video", detail.title)
+                startProgressSave()
+            }
             if (detail.title.isNotBlank()) loadDanmaku(detail.title, 1)
         }
     }
@@ -210,6 +316,8 @@ class VideoViewModel @Inject constructor(
                 name = "${d.title} · ${epIdx + 1}",
                 isHls = play.url.endsWith(".m3u8", true)
             )
+            currentLineIdx = lineIdx
+            currentEpIdx = epIdx
             _play.value = _play.value.copy(current = item, error = null)
             runCatching { playerCore.switchUrl(item) }
             loadDanmaku(d.title, epIdx + 1)
@@ -217,10 +325,187 @@ class VideoViewModel @Inject constructor(
     }
 
     fun exitPlayback() {
+        progressSaveJob?.cancel()
+        progressSaveJob = null
+        playerCore.setOnCompletionListener(null)
         playerCore.release()
+        currentLineIdx = 0
+        currentEpIdx = 0
+        dramaIndex = 0
         _play.value = PlayUiState()
         _danmaku.value = emptyList()
         _epg.value = com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList())
+    }
+
+    /** 添加播放记录到历史 */
+    private fun addToHistory(item: PlayMediaItem, module: String, title: String, positionMs: Long = 0L) {
+        val history = PlayHistoryEntity(
+            id = "hist_${item.url.hashCode()}",
+            sourceId = item.url,
+            contentId = item.url,
+            title = title,
+            positionMs = positionMs,
+            module = module,
+            updated = System.currentTimeMillis()
+        )
+        viewModelScope.launch {
+            playHistoryDao.upsert(history)
+        }
+    }
+
+    /** 获取播放历史 */
+    fun getPlayHistory(module: String = "video") {
+        viewModelScope.launch {
+            playHistoryDao.byModule(module).collect { history ->
+                _playHistory.value = history
+            }
+        }
+    }
+
+    /** 获取收藏列表 */
+    fun getFavorites(module: String = "video") {
+        viewModelScope.launch {
+            favoritesDao.byModule(module).collect { favs ->
+                _favorites.value = favs
+            }
+        }
+    }
+
+    /** 添加到收藏 */
+    fun addToFavorites(title: String, coverUrl: String = "", category: String = "videos") {
+        viewModelScope.launch {
+            val favorite = FavoritesEntity(
+                id = "fav_${UUID.randomUUID().toString()}",
+                sourceId = "",
+                contentId = UUID.randomUUID().toString(),
+                title = title,
+                coverUrl = coverUrl,
+                module = "video",
+                addedTime = System.currentTimeMillis(),
+                category = category
+            )
+            favoritesDao.upsert(favorite)
+        }
+    }
+
+    /** 从收藏移除 */
+    fun removeFromFavorites(id: String) {
+        viewModelScope.launch {
+            favoritesDao.remove(id)
+        }
+    }
+
+    /** 清空当前模块的收藏 */
+    fun clearFavorites(module: String = "video") {
+        viewModelScope.launch {
+            favoritesDao.clearByModule(module)
+        }
+    }
+
+    // ---------- IPTV 频道收藏 ----------
+
+    fun toggleLiveFavorite(channel: LiveChannel) {
+        viewModelScope.launch {
+            val existing = favoritesDao.byCategory("live").first()
+                .find { it.contentId == channel.url }
+            if (existing != null) {
+                favoritesDao.remove(existing.id)
+            } else {
+                favoritesDao.upsert(
+                    FavoritesEntity(
+                        id = "fav_live_${channel.url.hashCode()}",
+                        sourceId = "",
+                        contentId = channel.url,
+                        title = channel.name,
+                        coverUrl = "",
+                        module = "live",
+                        addedTime = System.currentTimeMillis(),
+                        category = "live"
+                    )
+                )
+            }
+            _liveFavorites.value = favoritesDao.byCategory("live").first()
+        }
+    }
+
+    fun isLiveFavorite(url: String): Boolean {
+        return _liveFavorites.value.any { it.contentId == url }
+    }
+
+    private fun refreshLiveFavorites() {
+        viewModelScope.launch {
+            favoritesDao.byCategory("live").collect { _liveFavorites.value = it }
+        }
+    }
+
+    // ---------- 换台记忆 ----------
+
+    fun restoreLastLiveChannel() {
+        val saved = lastLiveChannelUrl
+        if (saved.isBlank()) return
+        val ch = _lives.value.find { it.url == saved } ?: return
+        switchLive(ch)
+    }
+
+    private fun rememberLiveChannel(url: String) {
+        lastLiveChannelUrl = url
+        viewModelScope.launch {
+            appDataStore.edit { prefs ->
+                prefs[keyLastLiveChannel] = url
+            }
+        }
+    }
+
+    private fun loadLastLiveChannel() {
+        viewModelScope.launch {
+            val prefs = appDataStore.data.first()
+            lastLiveChannelUrl = prefs[keyLastLiveChannel] ?: ""
+        }
+    }
+
+    /** 从历史恢复播放位置（同一 URL 的进度由 [startProgressSave] 持续覆盖） */
+    fun resumePlayback(historyId: String) {
+        viewModelScope.launch {
+            playHistoryDao.byId(historyId)?.let { h ->
+                currentLineIdx = 0
+                currentEpIdx = 0
+                dramaIndex = 0
+                val item = PlayMediaItem(
+                    url = h.contentId,
+                    name = h.title,
+                    isHls = h.contentId.endsWith(".m3u8", true)
+                )
+                _play.value = _play.value.copy(current = item, error = null)
+                runCatching { playerCore.prepare(item) }
+                if (h.positionMs > 0) {
+                    playerCore.seekTo(h.positionMs)
+                    _toast.value = "已从 ${(h.positionMs / 1000L).div(60).toString() + ":" + "%02d".format((h.positionMs % 60_000L) / 1000L)} 继续播放"
+                } else {
+                    _toast.value = "开始播放"
+                }
+                startProgressSave()
+            }
+        }
+    }
+
+    /** 清除当前 toast（由 UI 层在显示完毕后调用） */
+    fun clearToast() {
+        _toast.value = ""
+    }
+
+    /** 启动定期保存播放进度（每 5 秒） */
+    private fun startProgressSave() {
+        progressSaveJob?.cancel()
+        progressSaveJob = viewModelScope.launch {
+            while (true) {
+                delay(5000)
+                val item = _play.value.current ?: break
+                val pos = playerCore.getCurrentPositionMs()
+                if (pos > 0) {
+                    addToHistory(item, "video", item.name, positionMs = pos)
+                }
+            }
+        }
     }
 
     private fun mediaItemFor(
@@ -255,14 +540,73 @@ class VideoViewModel @Inject constructor(
     }.getOrDefault(emptyList())
 
     init {
-        // 镜像播放器状态到 PlayUiState，驱动播放页 UI
+        // 镜像播放器状态到 PlayUiState，驱动播放页 UI + 多线路自动切换
         viewModelScope.launch {
             playerCore.state.collect { state ->
+                val prev = _play.value.playerState
                 _play.value = _play.value.copy(playerState = state)
+                if (state == PlayerState.Error && prev != PlayerState.Error) {
+                    onPlaybackError()
+                }
             }
         }
+        // 自动连播：剧集/短剧播完自动切下一集
+        playerCore.setOnCompletionListener { onPlaybackEnded() }
         refresh()
         loadDramas()
         loadLives()
+        getPlayHistory()
+        getFavorites()
+        refreshLiveFavorites()
+        loadLastLiveChannel()
+        getSearchHistory()
+    }
+
+    private var lastPlaybackErrorAtMs = 0L
+
+    /** 播放失败回调：点播/短剧场景自动尝试下一线路（遍历全部线路，每集尝试一次）。
+     *  同一直播线路在 3s 内重复失败不再切换，防止末线路反复重试。 */
+    private fun onPlaybackError() {
+        if (_play.value.detail == null) return
+        val now = System.currentTimeMillis()
+        if (now - lastPlaybackErrorAtMs < 3_000L) return
+        lastPlaybackErrorAtMs = now
+        val lineKeys = _play.value.episodes.keys.toList()
+        if (lineKeys.isEmpty()) return
+        if (currentLineIdx < lineKeys.size - 1) {
+            switchEpisode(currentLineIdx + 1, currentEpIdx)
+            _toast.value = "线路切换失败，正在尝试下一线路…"
+        } else {
+            _play.value = _play.value.copy(
+                error = "播放失败：已遍历全部 ${lineKeys.size} 条线路"
+            )
+            _toast.value = "所有线路均失败，请检查网络"
+        }
+    }
+
+    /** 播放完成回调：短剧优先自动跳下一集，否则剧集自动切下一集。 */
+    private fun onPlaybackEnded() {
+        val hasDetail = _play.value.detail != null
+        if (!hasDetail && _dramas.value.isNotEmpty()) {
+            val next = dramaIndex + 1
+            if (next < _dramas.value.size) {
+                switchDrama(next)
+            }
+            return
+        }
+        val detail = _play.value.detail ?: return
+        val lines = detail.episodes
+        val lineKeys = lines.keys.toList()
+        if (currentLineIdx < lineKeys.size - 1) {
+            val nextLine = currentLineIdx + 1
+            switchEpisode(nextLine, 0)
+            return
+        }
+        val epCount = lines[lineKeys[currentLineIdx]]?.size ?: 0
+        if (currentEpIdx < epCount - 1) {
+            switchEpisode(currentLineIdx, currentEpIdx + 1)
+            return
+        }
+        // 最后一集播完，停在本集
     }
 }

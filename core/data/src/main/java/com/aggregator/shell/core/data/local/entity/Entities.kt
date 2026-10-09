@@ -93,3 +93,22 @@ data class PlayHistoryEntity(
     val module: String,
     val updated: Long = 0L
 )
+
+@Entity(tableName = "favorites")
+data class FavoritesEntity(
+    @PrimaryKey val id: String,
+    val sourceId: String,
+    val contentId: String,
+    val title: String,
+    val coverUrl: String? = null,
+    val module: String,
+    val addedTime: Long = 0L,
+    val category: String = "default"
+)
+
+@Entity(tableName = "search_history", primaryKeys = ["query", "module"])
+data class SearchHistoryEntity(
+    val query: String,
+    val module: String,
+    val lastUsed: Long = 0L
+)

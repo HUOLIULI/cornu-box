@@ -80,6 +80,21 @@ class VideoSourceRepoImpl @javax.inject.Inject constructor(
         liveDao.clearAll()
     }
 
+    override suspend fun testConnection(name: String): Boolean {
+        return try {
+            val sources = videoDao.all().first()
+            val source = sources.find { it.name == name } ?: return false
+            fetch(source.api)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    override suspend fun listSources(): List<VideoSourceEntity> {
+        return videoDao.all().first()
+    }
+
     private suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
         val resp = client.newCall(
             okhttp3.Request.Builder().url(url).build()
@@ -144,6 +159,31 @@ class ReaderSourceRepoImpl @javax.inject.Inject constructor(
         }
         upsertLocal(name, body)
     }
+
+    override suspend fun testConnection(name: String): Boolean {
+        return try {
+            val sources = bookSourceDao.all().first()
+            val source = sources.find { it.name == name } ?: return false
+            fetchUrl(source.url)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    override suspend fun listSources(): List<BookSourceEntity> {
+        return bookSourceDao.all().first()
+    }
+
+    private suspend fun fetchUrl(url: String): String = withContext(Dispatchers.IO) {
+        val resp = client.newCall(
+            okhttp3.Request.Builder().url(url).build()
+        ).execute()
+        resp.use { r ->
+            if (!r.isSuccessful) throw AppException.NetworkException(Exception("HTTP ${r.code} $url"))
+            r.body?.string() ?: ""
+        }
+    }
 }
 
 class MusicSourceRepoImpl @javax.inject.Inject constructor(
@@ -198,6 +238,33 @@ class MusicSourceRepoImpl @javax.inject.Inject constructor(
         val file = dir.resolve("$safeName.js")
         file.writeText(script)
         return file
+    }
+
+    override suspend fun testConnection(name: String): Boolean {
+        return try {
+            val sources = musicSourceDao.all().first()
+            val source = sources.find { it.name == name } ?: return false
+            if (source.remoteUrl != null) {
+                fetchUrl(source.remoteUrl!!)
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    override suspend fun listSources(): List<MusicSourceEntity> {
+        return musicSourceDao.all().first()
+    }
+
+    private suspend fun fetchUrl(url: String): String = withContext(Dispatchers.IO) {
+        val resp = client.newCall(
+            okhttp3.Request.Builder().url(url).build()
+        ).execute()
+        resp.use { r ->
+            if (!r.isSuccessful) throw AppException.NetworkException(Exception("HTTP ${r.code} $url"))
+            r.body?.string() ?: ""
+        }
     }
 }
 
@@ -267,6 +334,19 @@ class SubscriptionManagerImpl @javax.inject.Inject constructor(
 
     override suspend fun listSubscriptions(): List<SubscriptionEntity> =
         subscriptionDao.all().first()
+
+    override suspend fun autoUpdate() {
+        val subscriptions = subscriptionDao.all().first()
+        subscriptions.filter { it.autoUpdate }.forEach { sub ->
+            if (System.currentTimeMillis() - sub.lastUpdate >= sub.updateInterval) {
+                try {
+                    update(sub.subId)
+                } catch (e: Exception) {
+                    // 记录失败但不中断
+                }
+            }
+        }
+    }
 
     private suspend fun fetch(url: String): String = withContext(Dispatchers.IO) {
         val resp = client.newCall(

@@ -9,6 +9,7 @@ import com.aggregator.shell.core.data.local.AppDatabase
 import com.aggregator.shell.core.data.local.BookSourceDao
 import com.aggregator.shell.core.data.local.BookshelfDao
 import com.aggregator.shell.core.data.local.EpgDao
+import com.aggregator.shell.core.data.local.FavoritesDao
 import com.aggregator.shell.core.data.local.LiveSourceDao
 import com.aggregator.shell.core.data.local.MusicSourceDao
 import com.aggregator.shell.core.data.local.PlayHistoryDao
@@ -73,6 +74,10 @@ object CoreDataModule {
     @Provides
     @Singleton
     fun provideSourceLogDao(db: AppDatabase): SourceLogDao = db.sourceLogDao()
+
+    @Provides
+    @Singleton
+    fun provideFavoritesDao(db: AppDatabase): FavoritesDao = db.favoritesDao()
 
     @Provides
     @Singleton

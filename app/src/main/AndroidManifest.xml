@@ -37,5 +37,14 @@
         <activity android:name="com.aggregator.shell.feature.reader.ReaderActivity" android:exported="false" />
         <activity android:name="com.aggregator.shell.feature.music.MusicActivity" android:exported="false" />
         <activity android:name="com.aggregator.shell.feature.settings.SettingsActivity" android:exported="false" />
+
+        <service
+            android:name="com.aggregator.shell.feature.music.MusicNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
