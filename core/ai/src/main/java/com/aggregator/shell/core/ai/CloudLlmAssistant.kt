@@ -1,6 +1,7 @@
 package com.aggregator.shell.core.ai
 
 import android.content.Context
+import com.aggregator.shell.core.ai.di.LlmClient
 import com.aggregator.shell.core.common.LlmConfigKeys
 import com.aggregator.shell.core.common.ModuleType
 import com.aggregator.shell.core.data.di.appDataStore
@@ -25,7 +26,7 @@ import javax.inject.Inject
  * is blank the caller should fall back to [HeuristicAssistant].
  */
 class CloudLlmAssistant @Inject constructor(
-    private val client: OkHttpClient,
+    @LlmClient private val client: OkHttpClient,
     @ApplicationContext
     private val context: Context
 ) : AiSourceAssistant {
@@ -41,9 +42,10 @@ class CloudLlmAssistant @Inject constructor(
         if (baseUrl.isEmpty() || apiKey == null) {
             throw IllegalStateException("LLM 未配置，请在设置中填入 Base URL 与 API Key")
         }
+        val model = prefs[LlmConfigKeys.MODEL]?.trim()?.takeIf { it.isNotBlank() } ?: LLM_DEFAULT_MODEL
 
         val body = JSONObject().apply {
-            put("model", LLM_DEFAULT_MODEL)
+            put("model", model)
             put("messages", JSONArray(messages.map { (role, content) ->
                 JSONObject().put("role", role).put("content", content)
             }))

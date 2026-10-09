@@ -14,6 +14,8 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 /**
@@ -26,6 +28,22 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AiModule {
+
+    /**
+     * LLM 专用客户端：读超时放宽到 120s（云端生成常需数十秒），并设 callTimeout 兜底，
+     * 与核心共享客户端（15s）区分，避免长生成被误判超时。
+     */
+    @Provides
+    @Singleton
+    @LlmClient
+    fun provideLlmClient(): OkHttpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(120, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(180, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
 
     @Provides
     @Singleton

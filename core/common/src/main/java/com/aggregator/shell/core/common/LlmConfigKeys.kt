@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 object LlmConfigKeys {
     val BASE_URL  = stringPreferencesKey("llm_base_url")
     val API_KEY   = stringPreferencesKey("llm_api_key")
+    val MODEL     = stringPreferencesKey("llm_model")
 
     val DANMAKU_BASE_URL = stringPreferencesKey("danmaku_base_url")
     val DANMAKU_API_KEY  = stringPreferencesKey("danmaku_api_key")

@@ -65,6 +65,7 @@ class SettingsActivity : ComponentActivity() {
         // LLM 配置：从 DataStore 回填
         var baseUrl by remember { mutableStateOf("") }
         var apiKey by remember { mutableStateOf("") }
+        var llmModel by remember { mutableStateOf("") }
         // 弹幕源配置：从 DataStore 回填
         var danmakuUrl by remember { mutableStateOf("") }
         var danmakuKey by remember { mutableStateOf("") }
@@ -72,6 +73,7 @@ class SettingsActivity : ComponentActivity() {
             val prefs = context.appDataStore.data.first()
             baseUrl = prefs[LlmConfigKeys.BASE_URL] ?: ""
             apiKey = prefs[LlmConfigKeys.API_KEY] ?: ""
+            llmModel = prefs[LlmConfigKeys.MODEL] ?: ""
             danmakuUrl = prefs[LlmConfigKeys.DANMAKU_BASE_URL] ?: ""
             danmakuKey = prefs[LlmConfigKeys.DANMAKU_API_KEY] ?: ""
         }
@@ -152,12 +154,20 @@ class SettingsActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = llmModel,
+                onValueChange = { v -> llmModel = v },
+                label = { Text("LLM 模型（可选，默认 gpt-3.5-turbo）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
                     scope.launch {
                         context.appDataStore.edit { p ->
                             p[LlmConfigKeys.BASE_URL] = baseUrl.trim()
                             p[LlmConfigKeys.API_KEY] = apiKey.trim()
+                            p[LlmConfigKeys.MODEL] = llmModel.trim()
                         }
                         msg = "LLM 配置已保存"
                     }

@@ -214,17 +214,17 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun startService(context: Context) {
-        context.startService(Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java))
+        // 前台服务必须用 startForegroundService（API 26+），Service 在 onCreate 内
+        // startForeground，满足 5s 内提升为前台的约束；直接 startService 在后台场景会抛异常。
+        androidx.core.content.ContextCompat.startForegroundService(
+            context,
+            Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java)
+        )
     }
 
     override fun stopService(context: Context) {
-        // 前台服务需 stopForeground 才能及时移除通知栏条目，单纯 stopService 在部分
-        // 机型不会立即销毁 startForeground 服务。这里发一个显式 Intent 让 Service
-        // 在 onStartCommand 里 stopForeground + stopSelf 真正终结。
-        context.startService(
-            Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java)
-                .putExtra(com.aggregator.shell.core.media.MediaPlaybackService.EXTRA_STOP_FOREGROUND, true)
-        )
+        // stopService 会触发 onDestroy，Service 在 onDestroy 内 stopForeground(REMOVE)
+        // 移除通知并结束前台状态，无需再额外 startService 传递停止信号。
         context.stopService(Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java))
     }
 

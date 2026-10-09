@@ -6,8 +6,9 @@ MediaShell（com.aggregator.shell）— 多源聚合阅读 / 影视 / 音乐壳�
 
 ### 新增
 - AI 真实 LLM：`LlmDelegatingAssistant` 按本机 DataStore 配置动态切换云端 / 离线；
-  `CloudLlmAssistant` 走 OpenAI 兼容 `/chat/completions`（OkHttp + `Dispatchers.IO`），
-  未配置时回退离线规则助手；LLM 配置键抽到 `core:common`（`LlmConfigKeys`）跨模块复用
+  `CloudLlmAssistant` 走 OpenAI 兼容 `/chat/completions`（专用 OkHttp 客户端，读超时 120s）
+  并支持自定义模型（`LlmConfigKeys.MODEL`，默认 `gpt-3.5-turbo`）；未配置时回退离线规则助手；
+  LLM 配置键抽到 `core:common`（`LlmConfigKeys`）跨模块复用
 - 前台播放服务：`MediaPlaybackService`（`@AndroidEntryPoint`）只读播放状态更新通知，
   与 `PlayerCore` 解耦；视频 / 音乐进入播放启服务、退出停止（`EXTRA_STOP_FOREGROUND`）
 - 「我的」聚合页：`feature:my` + `MyPageActivity` / `MyViewModel`，聚合收藏、播放历史、

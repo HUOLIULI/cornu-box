@@ -44,31 +44,15 @@ class MediaPlaybackService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.getBooleanExtra(EXTRA_STOP_FOREGROUND, false) == true) {
-            stopForegroundService()
-            return START_NOT_STICKY
-        }
         return START_STICKY
     }
 
-    /**
-     * 停止前台服务并移除通知栏条目。
-     * 由 [com.aggregator.shell.core.media.player.PlayerCore.stopService] 触发：
-     * 先 stopForeground(true) 移除通知，再 stopSelf() 真正结束 Service 生命周期。
-     */
-    fun stopForegroundService() {
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
-    }
-
-    companion object {
-        const val EXTRA_STOP_FOREGROUND = "extra_stop_foreground"
-    }
-
     override fun onDestroy() {
-        super.onDestroy()
+        // 先移除前台通知再结束，避免部分机型残留通知栏条目。
+        stopForeground(STOP_FOREGROUND_REMOVE)
         stateJob?.cancel()
         scope.cancel()
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): android.os.IBinder? = null
