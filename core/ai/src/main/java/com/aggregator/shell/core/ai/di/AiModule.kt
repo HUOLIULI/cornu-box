@@ -11,8 +11,9 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import javax.inject.Singleton
 
 /**
@@ -45,21 +46,23 @@ class LlmDelegatingAssistant(
     private val heuristic: HeuristicAssistant
 ) : AiSourceAssistant {
 
-    private fun useCloud(): Boolean = runCatching {
-        val prefs = runBlocking { context.appDataStore.data.first() }
-        (prefs[LlmConfigKeys.BASE_URL]?.trim()?.isNotBlank() == true)
-            && (prefs[LlmConfigKeys.API_KEY]?.trim()?.isNotBlank() == true)
-    }.getOrDefault(false)
+    /** 读取 DataStore 判断是否走云端 LLM；在 IO 调度器上执行，避免阻塞调用方线程。 */
+    private suspend fun useCloud(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val prefs = context.appDataStore.data.first()
+            (prefs[LlmConfigKeys.BASE_URL]?.trim()?.isNotBlank() == true)
+                && (prefs[LlmConfigKeys.API_KEY]?.trim()?.isNotBlank() == true)
+        }.getOrDefault(false)
+    }
 
-    private val active: AiSourceAssistant
-        get() = if (useCloud()) cloud else heuristic
+    private suspend fun active(): AiSourceAssistant = if (useCloud()) cloud else heuristic
 
     override suspend fun generateSource(targetUrl: String, module: com.aggregator.shell.core.common.ModuleType, sampleHtml: String?) =
-        active.generateSource(targetUrl, module, sampleHtml)
+        active().generateSource(targetUrl, module, sampleHtml)
 
     override suspend fun repairSource(original: String, logs: List<com.aggregator.shell.core.data.local.entity.SourceLogEntity>, module: com.aggregator.shell.core.common.ModuleType) =
-        active.repairSource(original, logs, module)
+        active().repairSource(original, logs, module)
 
     override suspend fun analyzeFailure(logs: List<com.aggregator.shell.core.data.local.entity.SourceLogEntity>) =
-        active.analyzeFailure(logs)
+        active().analyzeFailure(logs)
 }

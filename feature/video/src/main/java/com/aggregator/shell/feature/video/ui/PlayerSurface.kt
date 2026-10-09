@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -69,15 +68,13 @@ fun PlayerSurface(
 ) {
     val context = LocalContext.current
 
+    // 播放器生命周期由调用方（VideoViewModel.exitPlayback / MusicViewModel.stopPlayback）
+    // 统一管理，这里不再自动 release；否则短剧 VerticalPager 多页同时挂载时会反复
+    // 释放共享的 Singleton ExoPlayer，造成 release/重建竞态。
     LaunchedEffect(item) {
-        runCatching {
-            player.initialize(context)
-            player.prepare(item)
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { player.release() }
+        player.initialize(context)
+        runCatching { player.prepare(item) }
+            .onFailure { /* prepare 失败时 ExoPlayer 监听器会把 _state 置 Error，UI 据此显示 */ }
     }
 
     Box(Modifier.fillMaxSize()) {

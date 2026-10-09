@@ -90,19 +90,16 @@ class VideoActivity : ComponentActivity() {
         setContent {
             AppTheme {
                 var tabIndex by remember { mutableIntStateOf(0) }
-                // 短剧 Tab 切竖屏，离开恢复；点播/IPTV 保持默认方向
-                androidx.compose.runtime.DisposableEffect(tabIndex) {
-                    requestedOrientation = if (tabIndex == 1) {
-                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                    } else {
-                        ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                    }
+                // 短剧 Tab 切竖屏；离开该 Tab 时 onDispose 恢复默认方向。
+                // key 为 tabIndex：进入短剧(key=1) body 设 PORTRAIT，离开(key≠1) onDispose 恢复 UNSPECIFIED。
+                DisposableEffect(tabIndex) {
+                    if (tabIndex == 1) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                     onDispose {
-                        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                        if (tabIndex == 1) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     }
                 }
                 // 从「我的」追剧夹跳转：直接打开该内容播放
-                androidx.compose.runtime.LaunchedEffect(Unit) {
+                LaunchedEffect(Unit) {
                     if (extraContentId != null && extraSourceId != null) {
                         vm.onItemClicked(
                             com.aggregator.shell.core.source.api.VideoResult(
@@ -127,7 +124,7 @@ class VideoActivity : ComponentActivity() {
                 val searchHistory = vm.searchHistory.collectAsState()
                 val inPlayback = playState.value.current != null
 
-                androidx.compose.runtime.LaunchedEffect(inPlayback) {
+                LaunchedEffect(inPlayback) {
                     if (inPlayback) {
                         playerCore.startService(this@VideoActivity)
                     }
@@ -384,9 +381,9 @@ private fun PlaybackScreen(
                 PlayerSurface(item = current, player = player, danmaku = danmaku)
                 if (epg.nowPlaying != null || epg.upcoming.isNotEmpty()) EpgPanel(epg)
                 EpisodeSelector(state = state, onSwitch = onSwitch)
-                if (state.detail != null) {
+                state.detail?.let { d ->
                     androidx.compose.material3.OutlinedButton(
-                        onClick = { onFavorite(state.detail!!) },
+                        onClick = { onFavorite(d) },
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     ) {
                         Text("收藏到追剧夹")

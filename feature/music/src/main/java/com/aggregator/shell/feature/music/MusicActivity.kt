@@ -61,7 +61,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.media.lyric.LrcParser
 import com.aggregator.shell.core.source.api.MusicResult
@@ -358,9 +357,6 @@ private fun TextButtonPlaceholder(onClick: () -> Unit) {
         Text("停止", color = MaterialTheme.colorScheme.primary)
     }
 }
-
-private fun isFavorite(ui: MusicPlayerUi, song: MusicResult): Boolean =
-    songInFav(ui, emptyList())
 
 private fun songInFav(ui: MusicPlayerUi, favs: List<com.aggregator.shell.core.data.local.entity.FavoriteEntity>): Boolean {
     val song = ui.queue.getOrNull(ui.queueIndex) ?: return false

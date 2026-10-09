@@ -21,8 +21,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
             bottomBar = {
                 NavigationBar {
                     navBarEntry(route = "video", icon = Icons.Filled.Movie, label = "影视", nav = nav, current = current)
-                    navBarEntry(route = "reader", icon = Icons.Filled.MenuBook, label = "阅读", nav = nav, current = current)
+                    navBarEntry(route = "reader", icon = Icons.AutoMirrored.Filled.MenuBook, label = "阅读", nav = nav, current = current)
                     navBarEntry(route = "music", icon = Icons.Filled.MusicNote, label = "音乐", nav = nav, current = current)
                     navBarEntry(route = "my", icon = Icons.Filled.Person, label = "我的", nav = nav, current = current)
                     navBarEntry(route = "settings", icon = Icons.Filled.Settings, label = "设置", nav = nav, current = current)

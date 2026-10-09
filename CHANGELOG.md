@@ -2,6 +2,35 @@
 
 MediaShell（com.aggregator.shell）— 多源聚合阅读 / 影视 / 音乐壳子 APK。
 
+## 1.6.0
+
+### 新增
+- AI 真实 LLM：`LlmDelegatingAssistant` 按本机 DataStore 配置动态切换云端 / 离线；
+  `CloudLlmAssistant` 走 OpenAI 兼容 `/chat/completions`（OkHttp + `Dispatchers.IO`），
+  未配置时回退离线规则助手；LLM 配置键抽到 `core:common`（`LlmConfigKeys`）跨模块复用
+- 前台播放服务：`MediaPlaybackService`（`@AndroidEntryPoint`）只读播放状态更新通知，
+  与 `PlayerCore` 解耦；视频 / 音乐进入播放启服务、退出停止（`EXTRA_STOP_FOREGROUND`）
+- 「我的」聚合页：`feature:my` + `MyPageActivity` / `MyViewModel`，聚合收藏、播放历史、
+  搜索历史、书架、EPG 五类 Room 数据；首页新增「我的」导航项
+- 聚合搜索：`core:search`（`SearchAggregator` 并发检索 + 去重 + 记搜索历史）
+- 三引擎接 Room 源表：`SourceProvider` / `RoomSourceProvider` + `FallbackSourceProvider`，
+  订阅导入 → 引擎回流
+- Room Migration(1→2)：新增 `favorites` / `search_history` 表；`MigrationTest` 覆盖
+- 音乐播放页 `MusicActivity`（LRC 逐行高亮）+ `LrcParser`；阅读全链路 `ReaderViewModel`
+
+### 优化 / 修复
+- `PlayUrlValidator` 语义修正：未知 / 空 scheme 直接拒绝，仅放行 http/https/rtmp/rtsp/mms
+- targetSdk 35 edge-to-edge：`MainActivity.enableEdgeToEdge()`
+- `PlayerCore` release 幂等 + `switchUrl/pause/resume` 空守卫；播放器 release 竞态修复
+- 前台服务停止改 `stopForeground(STOP_FOREGROUND_REMOVE) + stopSelf`
+- 去阻塞：`CloudLlmAssistant` / `LlmDelegatingAssistant` 的 `runBlocking` 改 `withContext(Dispatchers.IO)`；
+  LLM 输出剥离 ```json 围栏
+- HiltViewModel 改 `@Inject constructor(... Application)` 构造注入（替换不可靠的 `@Inject lateinit var`）
+- 代码质量复查：清理死代码 / 重复 import、`!!` 改安全调用、搜索历史独立 `SearchRow`、
+  EPG channelId 用频道名、修正短剧方向切换 `DisposableEffect` 语义
+- R8 keep 补全 Media3（exoplayer.*/session.*）
+- 发布签名：release build 支持 `keystore.properties`，缺失回退 debug keystore，产出可安装包
+
 ## 1.5.1
 
 - 单测对齐 RuleParser v1.1.1 严格 JSONPath 语义（数组通配 `[*]`、字段需 `$.` 前缀）

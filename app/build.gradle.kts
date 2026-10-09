@@ -1,9 +1,19 @@
+import java.util.Properties
+import java.io.File
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+}
+
+// 可选的 keystore.properties（rootProject 根目录）：提供后用于正式签名；
+// 缺失时回退 debug keystore，保证本地/CI 能产出可安装的 release 包。
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -17,6 +27,23 @@ android {
         versionCode = 7
         versionName = "1.6.0"
         vectorDrawables { useSupportLibrary = true }
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropsFile.exists()) {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            } else {
+                storeFile = File(System.getProperty("user.home"), ".android/debug.keystore")
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildTypes {
@@ -27,6 +54,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -10,14 +10,15 @@
 
 | 模块 | 说明 |
 |------|------|
-| `app` | 壳子入口，Home Tab 切换（影视 / 阅读 / 音乐 / 设置） |
-| `core:common` | 通用工具、`ModuleType` |
-| `core:data` | Room（订阅 / 各源 / EPG / 播放历史）+ DataStore + `appDataStore` |
-| `core:source` | 引擎（`LegadoEngine` / `TvBoxEngine` / `LxMusicEngine`）+ `RuleParser` + `RhinoJsExecutor` |
-| `core:media` | `PlayerCore`（Media3 ExoPlayer）+ 弹幕（`DanmakuSource`）+ EPG（`EpgParser`/`EpgProvider`） |
+| `app` | 壳子入口，Home Tab 切换（影视 / 阅读 / 音乐 / 我的 / 设置） |
+| `core:common` | 通用工具、`ModuleType`、`LlmConfigKeys` |
+| `core:data` | Room（订阅 / 各源 / EPG / 播放历史 / 收藏 / 搜索历史）+ DataStore + `appDataStore` |
+| `core:source` | 引擎（`LegadoEngine` / `TvBoxEngine` / `LxMusicEngine`）+ `RuleParser` + `RhinoJsExecutor` + `SourceProvider` |
+| `core:media` | `PlayerCore`（Media3 ExoPlayer）+ `MediaPlaybackService` + 弹幕（`DanmakuSource`）+ EPG（`EpgParser`/`EpgProvider`）+ `LrcParser` |
+| `core:search` | `SearchAggregator` 跨模块并发检索 + 去重 + 搜索历史 |
 | `core:ui` | Compose 通用组件 |
-| `core:ai` | 制源助手（离线启发式 / 云端 LLM） |
-| `feature:video` / `reader` / `music` / `settings` | 各功能 Activity + ViewModel |
+| `core:ai` | 制源助手（离线启发式 / `CloudLlmAssistant` 云端 LLM，`LlmDelegatingAssistant` 动态切换） |
+| `feature:video` / `reader` / `music` / `settings` / `my` | 各功能 Activity + ViewModel |
 
 ## 构建
 
@@ -29,11 +30,28 @@ export ANDROID_HOME=/opt/android-sdk
 # 编译 debug APK
 /opt/gradle-8.9/bin/gradle :app:assembleDebug --console=plain
 
+# 编译 release APK（R8 + 资源收缩 + 签名）
+/opt/gradle-8.9/bin/gradle :app:assembleRelease --console=plain
+
 # 单测
 /opt/gradle-8.9/bin/gradle :core:source:testDebugUnitTest --rerun-tasks
 ```
 
-产物：`app/build/outputs/apk/debug/app-debug.apk`（**不入 Git**，`.gitignore` 已排除）。
+产物：
+- debug：`app/build/outputs/apk/debug/app-debug.apk`（**不入 Git**，`.gitignore` 已排除）
+- release：`app/build/outputs/apk/release/app-release.apk`（**不入 Git**）
+
+## 签名
+
+release 构建默认回退使用 debug keystore，便于本地/CI 直接产出可安装包。正式发布时在仓库根新建
+`keystore.properties`（已在 `.gitignore` 排除）：
+
+```properties
+storeFile=/absolute/path/to/release.jks
+storePassword=****
+keyAlias=****
+keyPassword=****
+```
 
 ## 技术栈
 
@@ -41,8 +59,8 @@ Kotlin 2.0.21 · Compose BOM 2024.10.01 · Hilt 2.52（KSP）· Room 2.6.1 · Me
 
 ## 版本
 
-`versionName 1.5.1`（`versionCode 6`）。完整演进见 [CHANGELOG.md](./CHANGELOG.md)。
+`versionName 1.6.0`（`versionCode 7`）。完整演进见 [CHANGELOG.md](./CHANGELOG.md)。
 
 ## 配置
 
-源 / 弹幕 / LLM 端点配置见 [docs/SOURCE_CONFIG.md](./docs/SOURCE_CONFIG.md)。
+源 / 弹幕 / LLM 端点配置见 [docs/SOURCE_CONFIG.md](./docs/SOURCE_CONFIG.md)，发布与安装说明见 [docs/RELEASE.md](./docs/RELEASE.md)。

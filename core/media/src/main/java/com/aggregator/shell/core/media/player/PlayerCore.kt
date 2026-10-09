@@ -112,11 +112,13 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun detachPlayerView() {
+        pendingView?.let { it.player = null }
         pendingView = null
     }
 
     override suspend fun prepare(item: PlayMediaItem) {
         if (item.url.isBlank() || !PlayUrlValidator.validate(item.url)) {
+            _state.value = PlayerState.Error
             throw AppException.PlayUrlInvalidException(item.url)
         }
         retryCount = 0
@@ -141,6 +143,10 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         }
         current = item
         retryCount = 0
+        pendingSeekMs = item.seekPositionMs
+        seekApplied = false
+        // release() 后 player 为 null：先重建再切，避免「状态置 Loading 但无媒体项」的不一致。
+        if (player == null) return
         player?.let {
             it.setMediaItem(MediaItem.fromUri(item.url))
             it.prepare()
@@ -150,11 +156,13 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun pause() {
+        if (player == null) return
         player?.pause()
         _state.value = PlayerState.Paused
     }
 
     override fun resume() {
+        if (player == null) return
         player?.play()
         _state.value = PlayerState.Ready
     }
@@ -189,13 +197,18 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun release() {
+        // 幂等：已 release 时不重复 cancel scope（避免 scheduleRetry 内的 scope.launch 抛异常）
         scope.cancel()
         positionTicker?.cancel()
+        retryJob?.cancel()
         player?.release()
         player = null
+        pendingView?.let { it.player = null }
         pendingView = null
+        current = null
         pendingSeekMs = 0L
         seekApplied = false
+        retryCount = 0
         _positionMs.value = 0L
         _state.value = PlayerState.Idle
     }
@@ -205,6 +218,13 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     override fun stopService(context: Context) {
+        // 前台服务需 stopForeground 才能及时移除通知栏条目，单纯 stopService 在部分
+        // 机型不会立即销毁 startForeground 服务。这里发一个显式 Intent 让 Service
+        // 在 onStartCommand 里 stopForeground + stopSelf 真正终结。
+        context.startService(
+            Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java)
+                .putExtra(com.aggregator.shell.core.media.MediaPlaybackService.EXTRA_STOP_FOREGROUND, true)
+        )
         context.stopService(Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java))
     }
 

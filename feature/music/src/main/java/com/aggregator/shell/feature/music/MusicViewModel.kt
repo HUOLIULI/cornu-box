@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
+import android.app.Application
 
 /** 播放页状态。 */
 data class MusicPlayerUi(
@@ -45,11 +46,9 @@ class MusicViewModel @Inject constructor(
     private val playerCore: PlayerCore,
     private val searchHistoryDao: SearchHistoryDao,
     private val favoriteDao: FavoriteDao,
-    private val playHistoryDao: PlayHistoryDao
+    private val playHistoryDao: PlayHistoryDao,
+    private val app: Application
 ) : ViewModel() {
-
-    @Inject
-    lateinit var app: android.app.Application
 
     private val _songs = MutableStateFlow(emptyList<MusicResult>())
     val songs: StateFlow<List<MusicResult>> = _songs.asStateFlow()
@@ -110,7 +109,8 @@ class MusicViewModel @Inject constructor(
     }
 
     fun playSong(song: MusicResult, queue: List<MusicResult>) {
-        val idx = queue.indexOfFirst { it.id == song.id }
+        var idx = queue.indexOfFirst { it.id == song.id }
+        if (idx < 0) idx = 0
         _player.value = _player.value.copy(queue = queue, queueIndex = idx)
         playCurrent(queue, idx)
     }

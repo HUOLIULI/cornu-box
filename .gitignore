@@ -180,3 +180,8 @@ local.properties
 
 # Android APK 产物（不入 Git，需自行编译）
 *.apk
+
+# 发布签名密钥配置（含密码，严禁提交）
+keystore.properties
+*.jks
+*.keystore

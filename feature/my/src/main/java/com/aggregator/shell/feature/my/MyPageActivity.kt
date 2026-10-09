@@ -152,12 +152,7 @@ class MyPageActivity : ComponentActivity() {
                             item { SectionEmpty("暂无搜索记录") }
                         } else {
                             items(ui.value.searchHistory) { s ->
-                                HistoryRow(
-                                    com.aggregator.shell.core.data.local.entity.PlayHistoryEntity(
-                                        id = s.id, sourceId = s.module, contentId = s.keyword,
-                                        title = s.keyword, positionMs = 0, module = s.module, updated = s.ts
-                                    )
-                                )
+                                SearchRow(keyword = s.keyword, module = s.module, ts = s.ts)
                             }
                         }
                     }
@@ -238,6 +233,24 @@ private fun HistoryRow(p: PlayHistoryEntity) {
             Text("${p.sourceId} · ${timeFmt.format(Date(p.updated))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
         }
     }
+}
+
+@Composable
+private fun SearchRow(keyword: String, module: String, ts: Long) {
+    val timeFmt = rememberDateFmt()
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(keyword, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${moduleLabel(module)} · ${timeFmt.format(Date(ts))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f))
+        }
+    }
+}
+
+private fun moduleLabel(module: String): String = when (module) {
+    "video" -> "影视"
+    "book" -> "阅读"
+    "music" -> "音乐"
+    else -> module
 }
 
 @Composable

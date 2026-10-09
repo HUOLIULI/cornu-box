@@ -8,7 +8,6 @@ import com.aggregator.shell.core.data.local.entity.SourceLogEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -31,13 +30,20 @@ class CloudLlmAssistant @Inject constructor(
     private val context: Context
 ) : AiSourceAssistant {
 
+    private companion object {
+        const val LLM_DEFAULT_MODEL = "gpt-3.5-turbo"
+    }
+
     private suspend fun chat(messages: List<Pair<String, String>>): String = withContext(Dispatchers.IO) {
-        val cfg = llmConfigSync()
-            ?: throw IllegalStateException("LLM 未配置，请在设置中填入 Base URL 与 API Key")
-        val (baseUrl, apiKey) = cfg
+        val prefs = context.appDataStore.data.first()
+        val baseUrl = (prefs[LlmConfigKeys.BASE_URL]?.trim()?.takeIf { it.isNotBlank() } ?: "").removeSuffix("/chat/completions")
+        val apiKey = prefs[LlmConfigKeys.API_KEY]?.trim()?.takeIf { it.isNotBlank() }
+        if (baseUrl.isEmpty() || apiKey == null) {
+            throw IllegalStateException("LLM 未配置，请在设置中填入 Base URL 与 API Key")
+        }
 
         val body = JSONObject().apply {
-            put("model", "gpt-3.5-turbo")
+            put("model", LLM_DEFAULT_MODEL)
             put("messages", JSONArray(messages.map { (role, content) ->
                 JSONObject().put("role", role).put("content", content)
             }))
@@ -56,21 +62,26 @@ class CloudLlmAssistant @Inject constructor(
             r.body?.string() ?: throw Exception("LLM 响应为空")
         }
 
-        runCatching {
+        val raw = runCatching {
             JSONObject(resp)
                 .getJSONArray("choices")
                 .getJSONObject(0)
                 .getJSONObject("message")
                 .getString("content")
         }.getOrDefault(resp)
+
+        stripFences(raw)
     }
 
-    private fun llmConfigSync(): Pair<String, String>? {
-        val prefs = runBlocking { context.appDataStore.data.first() }
-        val baseUrl = prefs[LlmConfigKeys.BASE_URL]?.trim()
-        val apiKey = prefs[LlmConfigKeys.API_KEY]?.trim()
-        return if (baseUrl.isNullOrBlank() || apiKey.isNullOrBlank()) null
-        else baseUrl.removeSuffix("/chat/completions") to apiKey
+    /** 剥离 LLM 输出中常见的 ```json ... ``` 围栏与前后空白，便于直接 JSON 解析。 */
+    private fun stripFences(text: String): String {
+        var s = text.trim()
+        if (s.startsWith("```")) {
+            val firstNl = s.indexOf('\n')
+            s = if (firstNl > 0) s.substring(firstNl + 1) else s.dropWhile { it == '`' }
+        }
+        if (s.endsWith("```")) s = s.dropLast(3)
+        return s.trim()
     }
 
     override suspend fun generateSource(targetUrl: String, module: ModuleType, sampleHtml: String?): SourceGenerationResult {

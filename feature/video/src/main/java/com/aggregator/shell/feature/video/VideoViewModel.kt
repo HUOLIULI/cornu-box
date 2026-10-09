@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.util.UUID
 import javax.inject.Inject
+import android.app.Application
 
 /**
  * 点播播放 UI 状态：列表项点击后驱动 [VideoActivity] 渲染 [PlayerSurface]。
@@ -71,11 +72,9 @@ class VideoViewModel @Inject constructor(
     private val searchAggregator: SearchAggregator,
     private val favoriteDao: FavoriteDao,
     private val playHistoryDao: PlayHistoryDao,
-    private val searchHistoryDao: SearchHistoryDao
+    private val searchHistoryDao: SearchHistoryDao,
+    private val app: Application
 ) : ViewModel() {
-
-    @Inject
-    lateinit var app: android.app.Application
 
     private val _play = MutableStateFlow(PlayUiState())
     val play: StateFlow<PlayUiState> = _play.asStateFlow()
@@ -259,7 +258,7 @@ class VideoViewModel @Inject constructor(
     private fun loadEpg(channel: LiveChannel) {
         viewModelScope.launch {
             _epg.value = runCatching {
-                epgProvider.epgFor(channel.epg, channelId = "live-demo")
+                epgProvider.epgFor(channel.epg, channelId = channel.name)
             }.getOrDefault(com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList()))
         }
     }
