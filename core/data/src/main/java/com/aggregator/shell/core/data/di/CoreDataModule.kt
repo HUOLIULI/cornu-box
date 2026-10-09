@@ -13,6 +13,7 @@ import com.aggregator.shell.core.data.local.FavoritesDao
 import com.aggregator.shell.core.data.local.LiveSourceDao
 import com.aggregator.shell.core.data.local.MusicSourceDao
 import com.aggregator.shell.core.data.local.PlayHistoryDao
+import com.aggregator.shell.core.data.local.SearchHistoryDao
 import com.aggregator.shell.core.data.local.SourceLogDao
 import com.aggregator.shell.core.data.local.SubscriptionDao
 import com.aggregator.shell.core.data.local.VideoSourceDao

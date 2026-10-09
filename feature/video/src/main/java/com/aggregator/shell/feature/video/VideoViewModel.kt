@@ -199,6 +199,13 @@ class VideoViewModel @Inject constructor(
         }
     }
 
+    fun clearSearchHistory() {
+        viewModelScope.launch {
+            searchHistoryDao.clearByModule("video")
+            _searchHistory.value = emptyList()
+        }
+    }
+
     /** 加载短剧列表：取内置演示源首线路各集，竖屏上下滑。 */
     fun loadDramas() {
         viewModelScope.launch {

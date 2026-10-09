@@ -221,6 +221,16 @@ class MusicActivity : ComponentActivity() {
                                         }
                                     }
                                 }
+                                Text(
+                                    text = "清空",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        .clickable { model.clearSearchHistory() }
+                                )
                             }
                         }
 

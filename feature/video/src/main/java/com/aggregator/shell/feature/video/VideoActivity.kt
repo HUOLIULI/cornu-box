@@ -204,6 +204,8 @@ class VideoActivity : ComponentActivity() {
                                     searchHistory = searchHistory.value,
                                     onSearch = { keyword -> vm.refresh(keyword) },
                                     onHistoryRemove = { q -> vm.removeSearchHistory(q) },
+                                    onHistoryClear = { vm.clearSearchHistory() },
+                                    onHistoryClear = { vm.clearSearchHistory() },
                                     onItemClick = { vm.onItemClicked(it) }
                                 )
                                 tabIndex == 1 -> DramaTab(
@@ -244,6 +246,7 @@ private fun VodoTab(
     searchHistory: List<SearchHistoryEntity>,
     onSearch: (String) -> Unit,
     onHistoryRemove: (String) -> Unit,
+    onHistoryClear: () -> Unit,
     onItemClick: (VideoResult) -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -270,39 +273,63 @@ private fun VodoTab(
         )
 
         // 搜索历史标签
-        if (searchHistory.isNotEmpty()) {
-            Row(
-                Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                searchHistory.forEach { h ->
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically
+            if (searchHistory.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    searchHistory.forEach { h ->
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text(
-                                text = h.query,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.clickable { onSearch(h.query) }
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = "×",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                                modifier = Modifier.clickable { onHistoryRemove(h.query) }
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = h.query,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.clickable { onSearch(h.query) }
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "×",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                                    modifier = Modifier.clickable { onHistoryRemove(h.query) }
+                                )
+                            }
                         }
                     }
+                    Text(
+                        text = "清空",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .clickable { onHistoryClear() }
+                    )
                 }
+            }
+                    }
+                }
+                Text(
+                    text = "清空",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .clickable { onHistoryClear() }
+                )
             }
         }
 

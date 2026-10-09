@@ -40,6 +40,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -214,6 +215,13 @@ class ReaderActivity : ComponentActivity() {
         fun removeSearchHistory(q: String) {
             scope.launch {
                 searchHistoryDao.remove("reader", q)
+                loadSearchHistory()
+            }
+        }
+
+        fun clearSearchHistory() {
+            scope.launch {
+                searchHistoryDao.clearByModule("reader")
                 loadSearchHistory()
             }
         }
@@ -400,6 +408,16 @@ class ReaderActivity : ComponentActivity() {
                                             }
                                         }
                                     }
+                                    Text(
+                                        text = "清空",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(20.dp))
+                                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                            .clickable { clearSearchHistory() }
+                                    )
                                 }
                             }
 
@@ -620,6 +638,13 @@ class ReaderActivity : ComponentActivity() {
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                     if (book.readProgress > 0f) {
+                        Spacer(Modifier.height(4.dp))
+                        LinearProgressIndicator(
+                            progress = { book.readProgress.coerceIn(0f, 1f) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                        )
                         Spacer(Modifier.height(2.dp))
                         Text(
                             "进度: ${String.format("%.1f%%", book.readProgress * 100)}",

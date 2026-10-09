@@ -5,12 +5,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -23,8 +27,11 @@ import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -34,16 +41,30 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.aggregator.shell.core.data.local.BookshelfDao
+import com.aggregator.shell.core.data.local.PlayHistoryDao
+import com.aggregator.shell.core.data.local.entity.BookshelfEntity
+import com.aggregator.shell.core.data.local.entity.PlayHistoryEntity
 import com.aggregator.shell.core.ui.theme.AppTheme
 import com.aggregator.shell.feature.music.MusicActivity
 import com.aggregator.shell.feature.reader.ReaderActivity
 import com.aggregator.shell.feature.settings.SettingsActivity
 import com.aggregator.shell.feature.video.VideoActivity
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+import kotlinx.coroutines.flow.first
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+
+    @Inject
+    lateinit var playHistoryDao: PlayHistoryDao
+
+    @Inject
+    lateinit var bookshelfDao: BookshelfDao
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -58,6 +79,20 @@ class MainActivity : ComponentActivity() {
     private fun AppShell() {
         val nav = rememberNavController()
         val current = nav.currentBackStackEntryAsState().value?.destination?.route ?: "video"
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+
+        var latestVideo by androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf<PlayHistoryEntity?>(null)
+        }
+        var latestBook by androidx.compose.runtime.remember {
+            androidx.compose.runtime.mutableStateOf<BookshelfEntity?>(null)
+        }
+
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            playHistoryDao.byModule("video").first().firstOrNull()?.let { latestVideo = it }
+            bookshelfDao.all().first().firstOrNull()?.let { latestBook = it }
+        }
 
         Scaffold(
             bottomBar = {
@@ -76,10 +111,66 @@ class MainActivity : ComponentActivity() {
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                composable("video") { BridgePanel("影视", VideoActivity::class.java) }
-                composable("reader") { BridgePanel("阅读", ReaderActivity::class.java) }
+                composable("video") {
+                    Column(Modifier.padding(16.dp)) {
+                        if (latestVideo != null) {
+                            QuickEntryCard(
+                                title = "继续播放",
+                                subtitle = latestVideo?.title ?: "",
+                                icon = Icons.Filled.PlayArrow,
+                                onClick = { context.startActivity(Intent(context, VideoActivity::class.java)) }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        BridgePanel("影视", VideoActivity::class.java)
+                    }
+                }
+                composable("reader") {
+                    Column(Modifier.padding(16.dp)) {
+                        if (latestBook != null) {
+                            QuickEntryCard(
+                                title = "继续阅读",
+                                subtitle = latestBook?.name ?: "",
+                                icon = Icons.Filled.MenuBook,
+                                onClick = { context.startActivity(Intent(context, ReaderActivity::class.java)) }
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        BridgePanel("阅读", ReaderActivity::class.java)
+                    }
+                }
                 composable("music") { BridgePanel("音乐", MusicActivity::class.java) }
                 composable("settings") { BridgePanel("设置", SettingsActivity::class.java) }
+            }
+        }
+    }
+
+    @Composable
+    private fun QuickEntryCard(
+        title: String,
+        subtitle: String,
+        icon: ImageVector,
+        onClick: () -> Unit
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+        ) {
+            Row(
+                Modifier
+                    .padding(12.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Icon(icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text(title, style = MaterialTheme.typography.titleSmall)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.weight(1f))
+                Button(onClick = onClick) { Text("打开") }
             }
         }
     }

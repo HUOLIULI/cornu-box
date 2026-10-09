@@ -94,6 +94,13 @@ class MusicViewModel @Inject constructor(
         }
     }
 
+    fun clearSearchHistory() {
+        viewModelScope.launch {
+            searchHistoryDao.clearByModule("music")
+            _searchHistory.value = emptyList()
+        }
+    }
+
     /** 播放指定歌曲，加入队列并同步 Service 静态状态 */
     fun play(song: MusicResult, context: Context? = null) {
         val queue = _results.value
