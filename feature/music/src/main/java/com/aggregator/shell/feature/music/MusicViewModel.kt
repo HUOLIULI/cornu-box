@@ -48,6 +48,9 @@ class MusicViewModel @Inject constructor(
     private val playHistoryDao: PlayHistoryDao
 ) : ViewModel() {
 
+    @Inject
+    lateinit var app: android.app.Application
+
     private val _songs = MutableStateFlow(emptyList<MusicResult>())
     val songs: StateFlow<List<MusicResult>> = _songs.asStateFlow()
 
@@ -133,6 +136,7 @@ class MusicViewModel @Inject constructor(
     fun stopPlayback() {
         saveCurrentResume()
         playerCore.release()
+        playerCore.stopService(app)
         _player.value = _player.value.copy(isPlaying = false, positionMs = 0L)
     }
 

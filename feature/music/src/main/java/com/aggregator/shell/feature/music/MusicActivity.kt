@@ -114,6 +114,8 @@ class MusicActivity : ComponentActivity() {
                 val player = vm.player.collectAsState()
                 val favorites = vm.favorites.collectAsState()
 
+                var isPlaying by remember { mutableStateOf(false) }
+
                 LaunchedEffect(Unit) {
                     if (extraSongId != null) {
                         val song = com.aggregator.shell.core.source.api.MusicResult(
@@ -125,8 +127,15 @@ class MusicActivity : ComponentActivity() {
                         )
                         showPlayer = true
                         vm.playSong(song, listOf(song))
+                        isPlaying = true
                     } else {
                         vm.search(query.ifBlank { "演示" })
+                    }
+                }
+
+                androidx.compose.runtime.LaunchedEffect(showPlayer) {
+                    if (showPlayer && isPlaying) {
+                        playerCore.startService(this@MusicActivity)
                     }
                 }
 

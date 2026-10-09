@@ -83,6 +83,7 @@ class VideoActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        playerCore.initialize(this)
         val extraContentId = intent.getStringExtra("extra_content_id")
         val extraSourceId = intent.getStringExtra("extra_source_id")
         val extraTitle = intent.getStringExtra("extra_title")
@@ -125,6 +126,12 @@ class VideoActivity : ComponentActivity() {
                 val favorites = vm.favorites.collectAsState()
                 val searchHistory = vm.searchHistory.collectAsState()
                 val inPlayback = playState.value.current != null
+
+                androidx.compose.runtime.LaunchedEffect(inPlayback) {
+                    if (inPlayback) {
+                        playerCore.startService(this@VideoActivity)
+                    }
+                }
 
                 Scaffold(
                     topBar = {

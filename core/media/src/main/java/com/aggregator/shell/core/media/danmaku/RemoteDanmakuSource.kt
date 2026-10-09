@@ -1,7 +1,7 @@
 package com.aggregator.shell.core.media.danmaku
 
 import android.content.Context
-import androidx.datastore.preferences.core.stringPreferencesKey
+import com.aggregator.shell.core.common.LlmConfigKeys
 import com.aggregator.shell.core.data.di.appDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
@@ -29,9 +29,6 @@ class RemoteDanmakuSource @Inject constructor(
     @ApplicationContext
     private val context: Context
 ) : DanmakuSource {
-
-    private val danmakuBaseUrlKey = stringPreferencesKey("danmaku_base_url")
-    private val danmakuApiKeyKey = stringPreferencesKey("danmaku_api_key")
 
     private val fallback = LocalDanmakuSource()
 
@@ -94,11 +91,11 @@ class RemoteDanmakuSource @Inject constructor(
 
     private suspend fun configBaseUrl(): String? {
         val prefs = context.appDataStore.data.first()
-        return prefs[danmakuBaseUrlKey]?.takeIf { it.isNotBlank() }
+        return prefs[LlmConfigKeys.DANMAKU_BASE_URL]?.takeIf { it.isNotBlank() }
     }
 
     private suspend fun configApiKey(): String? {
         val prefs = context.appDataStore.data.first()
-        return prefs[danmakuApiKeyKey]?.takeIf { it.isNotBlank() }
+        return prefs[LlmConfigKeys.DANMAKU_API_KEY]?.takeIf { it.isNotBlank() }
     }
 }

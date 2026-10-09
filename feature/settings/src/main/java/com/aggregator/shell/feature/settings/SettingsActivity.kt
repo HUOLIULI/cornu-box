@@ -28,8 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
 import com.aggregator.shell.core.ai.AiSourceAssistant
+import com.aggregator.shell.core.common.LlmConfigKeys
 import com.aggregator.shell.core.common.ModuleType
 import com.aggregator.shell.core.data.SubscriptionManager
 import com.aggregator.shell.core.data.di.appDataStore
@@ -70,10 +70,10 @@ class SettingsActivity : ComponentActivity() {
         var danmakuKey by remember { mutableStateOf("") }
         LaunchedEffect(Unit) {
             val prefs = context.appDataStore.data.first()
-            baseUrl = prefs[KEY_BASE_URL] ?: ""
-            apiKey = prefs[KEY_API_KEY] ?: ""
-            danmakuUrl = prefs[KEY_DANMAKU_BASE_URL] ?: ""
-            danmakuKey = prefs[KEY_DANMAKU_API_KEY] ?: ""
+            baseUrl = prefs[LlmConfigKeys.BASE_URL] ?: ""
+            apiKey = prefs[LlmConfigKeys.API_KEY] ?: ""
+            danmakuUrl = prefs[LlmConfigKeys.DANMAKU_BASE_URL] ?: ""
+            danmakuKey = prefs[LlmConfigKeys.DANMAKU_API_KEY] ?: ""
         }
 
         Column(
@@ -156,8 +156,8 @@ class SettingsActivity : ComponentActivity() {
                 Button(onClick = {
                     scope.launch {
                         context.appDataStore.edit { p ->
-                            p[KEY_BASE_URL] = baseUrl.trim()
-                            p[KEY_API_KEY] = apiKey.trim()
+                            p[LlmConfigKeys.BASE_URL] = baseUrl.trim()
+                            p[LlmConfigKeys.API_KEY] = apiKey.trim()
                         }
                         msg = "LLM 配置已保存"
                     }
@@ -205,8 +205,8 @@ class SettingsActivity : ComponentActivity() {
                 Button(onClick = {
                     scope.launch {
                         context.appDataStore.edit { p ->
-                            p[KEY_DANMAKU_BASE_URL] = danmakuUrl.trim()
-                            p[KEY_DANMAKU_API_KEY] = danmakuKey.trim()
+                            p[LlmConfigKeys.DANMAKU_BASE_URL] = danmakuUrl.trim()
+                            p[LlmConfigKeys.DANMAKU_API_KEY] = danmakuKey.trim()
                         }
                         msg = "弹幕源配置已保存"
                     }
@@ -215,14 +215,8 @@ class SettingsActivity : ComponentActivity() {
 
             Spacer(Modifier.height(16.dp))
             Text("关于", style = MaterialTheme.typography.titleLarge)
-            Text("MediaShell v1.5.1 · 壳子 APK · 不内置任何内容源", style = MaterialTheme.typography.bodyMedium)
+            Text("MediaShell v1.6.0 · 壳子 APK · 不内置任何内容源", style = MaterialTheme.typography.bodyMedium)
         }
     }
 
-    companion object {
-        private val KEY_BASE_URL = stringPreferencesKey("llm_base_url")
-        private val KEY_API_KEY = stringPreferencesKey("llm_api_key")
-        private val KEY_DANMAKU_BASE_URL = stringPreferencesKey("danmaku_base_url")
-        private val KEY_DANMAKU_API_KEY = stringPreferencesKey("danmaku_api_key")
-    }
 }

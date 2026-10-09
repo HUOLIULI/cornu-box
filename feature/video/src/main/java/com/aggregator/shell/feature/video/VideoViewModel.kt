@@ -74,6 +74,9 @@ class VideoViewModel @Inject constructor(
     private val searchHistoryDao: SearchHistoryDao
 ) : ViewModel() {
 
+    @Inject
+    lateinit var app: android.app.Application
+
     private val _play = MutableStateFlow(PlayUiState())
     val play: StateFlow<PlayUiState> = _play.asStateFlow()
 
@@ -307,6 +310,7 @@ class VideoViewModel @Inject constructor(
     fun exitPlayback() {
         saveCurrentResumePosition()
         playerCore.release()
+        playerCore.stopService(app)
         _play.value = PlayUiState()
         _danmaku.value = emptyList()
         _epg.value = com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList())

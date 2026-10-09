@@ -36,6 +36,10 @@
         <activity android:name="com.aggregator.shell.feature.video.VideoActivity" android:exported="false" />
         <activity android:name="com.aggregator.shell.feature.reader.ReaderActivity" android:exported="false" />
         <activity android:name="com.aggregator.shell.feature.music.MusicActivity" android:exported="false" />
+        <service
+            android:name="com.aggregator.shell.core.media.MediaPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <activity android:name="com.aggregator.shell.feature.settings.SettingsActivity" android:exported="false" />
         <activity android:name="com.aggregator.shell.feature.my.MyPageActivity" android:exported="false" />
     </application>

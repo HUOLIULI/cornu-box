@@ -1,6 +1,7 @@
 package com.aggregator.shell.core.media.player
 
 import android.content.Context
+import android.content.Intent
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -36,6 +37,8 @@ interface PlayerCore {
     /** 播放位置（毫秒）的实时流，供进度条 / 歌词同步等 UI 订阅。 */
     val positionMs: StateFlow<Long>
     fun initialize(context: Context)
+    fun startService(context: Context)
+    fun stopService(context: Context)
     suspend fun prepare(item: PlayMediaItem)
     fun switchUrl(item: PlayMediaItem)
     fun pause()
@@ -195,6 +198,14 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         seekApplied = false
         _positionMs.value = 0L
         _state.value = PlayerState.Idle
+    }
+
+    override fun startService(context: Context) {
+        context.startService(Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java))
+    }
+
+    override fun stopService(context: Context) {
+        context.stopService(Intent(context, com.aggregator.shell.core.media.MediaPlaybackService::class.java))
     }
 
     private fun scheduleRetry() {

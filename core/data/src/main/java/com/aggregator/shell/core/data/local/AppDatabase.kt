@@ -33,4 +33,16 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sourceLogDao(): SourceLogDao
     abstract fun favoriteDao(): FavoriteDao
     abstract fun searchHistoryDao(): SearchHistoryDao
+
+    companion object {
+        /**
+         * Build a non-Hilt database instance for unit tests.
+         * The caller is responsible for closing the returned instance.
+         */
+        fun createForTest(context: android.content.Context, name: String): AppDatabase =
+            Room.databaseBuilder(context, AppDatabase::class.java, name)
+                .addMigrations(Migrations.MIGRATION_1_2)
+                .fallbackToDestructiveMigration()
+                .build()
+    }
 }

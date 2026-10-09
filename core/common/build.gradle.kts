@@ -21,5 +21,6 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.datastore.preferences)
     api(libs.kotlinx.coroutines.android)
 }
