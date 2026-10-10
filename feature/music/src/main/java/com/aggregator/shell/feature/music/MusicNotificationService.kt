@@ -4,13 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Intent
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
-import androidx.media3.session.MediaController
-import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import com.aggregator.shell.core.media.player.ExoPlayerCore
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
@@ -20,21 +18,22 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
  * 音乐通知栏媒体控制服务
- * 使用 Media3 MediaSession 提供通知栏播放/暂停/上一曲/下一曲控制。
+ * 使用前台通知提供播放/暂停/上一曲/下一曲控制。
  * 通过 [MusicNotificationService.currentQueue] / [currentIndex] 管理播放队列，
  * 上一曲/下一曲通过队列索引遍历。
  */
 @AndroidEntryPoint
-class MusicNotificationService : MediaSessionService() {
+class MusicNotificationService : Service() {
 
     @Inject
     lateinit var musicEngine: MusicEngine
 
-    private var mediaSession: MediaSession? = null
     private var playerCore: PlayerCore? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -91,38 +90,6 @@ class MusicNotificationService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-    }
-
-    override fun onGetSession(request: MediaController.Request): MediaSession {
-        if (mediaSession == null) {
-            mediaSession = createMediaSession()
-        }
-        return mediaSession!!
-    }
-
-    private fun createMediaSession(): MediaSession {
-        val callback = object : MediaSession.Callback {
-            override fun onPlay() {
-                playerCore?.resume()
-            }
-
-            override fun onPause() {
-                playerCore?.pause()
-            }
-
-            override fun onSkipToNext() {
-                skipToNext()
-            }
-
-            override fun onSkipToPrevious() {
-                skipToPrevious()
-            }
-
-            override fun onStop() {
-                stopSelf()
-            }
-        }
-        return MediaSession.Builder(this, callback).build()
     }
 
     private fun skipToNext() {
@@ -258,7 +225,6 @@ class MusicNotificationService : MediaSessionService() {
         isServiceActive = false
         scope.cancel()
         playerCore?.release()
-        mediaSession?.release()
         super.onDestroy()
     }
 
