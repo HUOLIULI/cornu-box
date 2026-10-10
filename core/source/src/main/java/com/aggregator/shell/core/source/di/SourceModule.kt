@@ -6,6 +6,7 @@ import com.aggregator.shell.core.source.api.VideoEngine
 import com.aggregator.shell.core.source.engine.LegadoEngine
 import com.aggregator.shell.core.source.engine.LxMusicEngine
 import com.aggregator.shell.core.source.engine.TvBoxEngine
+import com.aggregator.shell.core.source.gateway.LocalGateway
 import com.aggregator.shell.core.source.sandbox.JsSandboxExecutor
 import com.aggregator.shell.core.source.sandbox.NoOpPythonRuntime
 import com.aggregator.shell.core.source.sandbox.PythonRuntime
@@ -50,4 +51,8 @@ object SourceModule {
     @Singleton
     fun provideMusicEngine(client: OkHttpClient, js: JsSandboxExecutor): MusicEngine =
         LxMusicEngine(client, js)
+
+    @Provides
+    @Singleton
+    fun provideLocalGateway(client: OkHttpClient): LocalGateway = LocalGateway(client)
 }

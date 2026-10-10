@@ -33,6 +33,9 @@ dependencies {
     implementation(libs.jsonpath)
     implementation(libs.rhino)
 
+    // 本地脚本网关（127.0.0.1 影视源代理，聚合自 DsPlayer/PeekPro T4 本地服务）
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
+
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
 
