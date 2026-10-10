@@ -33,9 +33,7 @@ jobs:
           gradle-version: '8.11.1'
 
       - name: Build Debug APK
-        run: |
-          gradle wrapper
-          ./gradlew assembleDebug
+        run: ./gradlew assembleDebug
 
       - name: Upload Debug APK
         if: github.event_name == 'push'
