@@ -70,10 +70,11 @@ object SourceModule {
     ): List<VideoEngine> =
         listOf(videoEngine)
 
+    @JvmSuppressWildcards
     @Provides
     @Singleton
     fun provideAggregateVideoSearch(
-        @JvmSuppressWildcards engines: List<VideoEngine>
+        engines: List<VideoEngine>
     ): AggregateVideoSearch =
         AggregateVideoSearch(engines)
 
