@@ -50,4 +50,21 @@ class LegadoEngineTest {
         val r = js.execute("while(true){}", timeoutMillis = 200L)
         assert(r is JsResult.Timeout || r is JsResult.Failure)
     }
+
+    @Test
+    fun `mainJs single-file source executes in sandbox`() {
+        val script = """
+            var list = [{id: "a", title: "书名A", writer: "作者", cover: "", url: "u1"},
+                       {id: "b", title: "书名B", writer: "作者2", cover: "", url: "u2"}];
+            JSON.stringify(list);
+        """.trimIndent()
+        val r = runBlocking { RhinoJsExecutor().execute(script, bindings = emptyMap()) }
+        val raw = when (r) {
+            is JsResult.Success -> r.value
+            else -> throw AssertionError("mainJs 执行失败: $r")
+        }
+        val parsed = org.json.JSONArray(raw)
+        assertEquals(2, parsed.length())
+        assertEquals("书名A", parsed.getJSONObject(0).getString("title"))
+    }
 }

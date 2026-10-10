@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.edit
 import com.aggregator.shell.core.ai.AiSourceAssistant
 import com.aggregator.shell.core.common.LlmConfigKeys
+import com.aggregator.shell.core.common.TtsConfigKeys
 import com.aggregator.shell.core.common.ModuleType
 import com.aggregator.shell.core.data.SubscriptionManager
 import com.aggregator.shell.core.data.di.appDataStore
@@ -69,6 +70,10 @@ class SettingsActivity : ComponentActivity() {
         // 弹幕源配置：从 DataStore 回填
         var danmakuUrl by remember { mutableStateOf("") }
         var danmakuKey by remember { mutableStateOf("") }
+        // TTS 朗读配置：从 DataStore 回填
+        var ttsUrl by remember { mutableStateOf("") }
+        var ttsKey by remember { mutableStateOf("") }
+        var ttsVoice by remember { mutableStateOf("") }
         LaunchedEffect(Unit) {
             val prefs = context.appDataStore.data.first()
             baseUrl = prefs[LlmConfigKeys.BASE_URL] ?: ""
@@ -76,6 +81,9 @@ class SettingsActivity : ComponentActivity() {
             llmModel = prefs[LlmConfigKeys.MODEL] ?: ""
             danmakuUrl = prefs[LlmConfigKeys.DANMAKU_BASE_URL] ?: ""
             danmakuKey = prefs[LlmConfigKeys.DANMAKU_API_KEY] ?: ""
+            ttsUrl = prefs[TtsConfigKeys.BASE_URL] ?: ""
+            ttsKey = prefs[TtsConfigKeys.API_KEY] ?: ""
+            ttsVoice = prefs[TtsConfigKeys.VOICE] ?: ""
         }
 
         Column(
@@ -221,6 +229,48 @@ class SettingsActivity : ComponentActivity() {
                         msg = "弹幕源配置已保存"
                     }
                 }) { Text("保存弹幕源") }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Text("TTS 听书", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "阅读模块「TTS 朗读」走 OpenAI 兼容 audio/speech 端点。" +
+                        "仅保存在本机 DataStore；留空则朗读时提示未配置。",
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = ttsUrl, onValueChange = { ttsUrl = it },
+                label = { Text("TTS Base URL（可选）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = ttsKey,
+                onValueChange = { v -> ttsKey = v },
+                label = { Text("TTS API Key（仅保存在本机）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = ttsVoice,
+                onValueChange = { v -> ttsVoice = v },
+                label = { Text("TTS 音色（可选，默认 alloy）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    scope.launch {
+                        context.appDataStore.edit { p ->
+                            p[TtsConfigKeys.BASE_URL] = ttsUrl.trim()
+                            p[TtsConfigKeys.API_KEY] = ttsKey.trim()
+                            p[TtsConfigKeys.VOICE] = ttsVoice.trim()
+                        }
+                        msg = "TTS 配置已保存"
+                    }
+                }) { Text("保存 TTS 配置") }
             }
 
             Spacer(Modifier.height(16.dp))

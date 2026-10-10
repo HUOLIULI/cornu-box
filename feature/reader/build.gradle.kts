@@ -21,6 +21,8 @@ android {
 dependencies {
     api(project(":core:common"))
     api(project(":core:source"))
+    api(project(":core:media"))
+    api(project(":core:ai"))
     implementation(project(":core:ui"))
     implementation(project(":core:data"))
     implementation(libs.androidx.core.ktx)

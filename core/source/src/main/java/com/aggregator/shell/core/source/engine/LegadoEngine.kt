@@ -6,10 +6,12 @@ import com.aggregator.shell.core.source.api.ReaderEngine
 import com.aggregator.shell.core.source.parse.RuleParser
 import com.aggregator.shell.core.source.registry.BookSourceDef
 import com.aggregator.shell.core.source.registry.SourceProvider
+import com.aggregator.shell.core.source.sandbox.JsResult
 import com.aggregator.shell.core.source.sandbox.JsSandboxExecutor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.UUID
@@ -36,9 +38,13 @@ class LegadoEngine(
 
     override suspend fun search(keyword: String, page: Int): List<BookResult> {
         val defs = sourceProvider.bookSources().filter { it.enabled }
-        return defs.mapNotNull { def ->
+        val ruleResults = defs.mapNotNull { def ->
             runCatching {
                 val source = JSONObject(def.rawJson)
+                // 单文件书源脚本（mainJs / format=js）：优先走 Rhino 沙盒执行
+                if (source.optString("format", "").equals("js", true) || source.optString("mainJs").isNotBlank()) {
+                    return@runCatching searchViaMainJs(def, keyword, page)
+                }
                 val rule = source.optJSONObject("ruleSearch") ?: return@runCatching null
                 val searchUrl = source.optString("searchUrl")
                 if (searchUrl.isBlank()) return@runCatching null
@@ -67,7 +73,55 @@ class LegadoEngine(
                     }.getOrNull()
                 }
             }.getOrDefault(emptyList())
-        }.flatten()
+        }
+        return ruleResults.flatten()
+    }
+
+    /**
+     * 单文件书源（Legado `mainJs` / `format=js`）：在 Rhino 沙盒内执行 `mainJs`，
+     * 脚本可调用 `http(url)` 拉取内容，最终返回书籍 JSON 数组。受指令上限与超时保护，
+     * 与 LxMusic 的 `lx` 桥同一套 [JsSandboxExecutor]，不引入额外 native。
+     *
+     * 约定返回 JSON：`[{"id","title","writer","cover","url"}]`。
+     */
+    private suspend fun searchViaMainJs(def: BookSourceDef, keyword: String, page: Int): List<BookResult> {
+        val source = JSONObject(def.rawJson)
+        val script = source.optString("mainJs").takeIf { it.isNotBlank() } ?: return emptyList()
+        val result = jsExecutor.execute(
+            script = script,
+            bindings = mapOf(
+                "key" to keyword,
+                "page" to page,
+                "http" to { url: String ->
+                    kotlinx.coroutines.runBlocking { get(url) }
+                },
+                "baseUrl" to source.optString("bookSourceUrl", "")
+            ),
+            timeoutMillis = 15_000
+        )
+        val raw = when (result) {
+            is JsResult.Success -> result.value.trim()
+            is JsResult.Failure -> return emptyList()
+            is JsResult.Timeout -> return emptyList()
+        }
+        val arr = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
+        val sourceName = def.name
+        return (0 until arr.length()).mapNotNull { i ->
+            runCatching {
+                val o = arr.getJSONObject(i)
+                val id = o.optString("id").ifEmpty { "bk-${def.sourceId}-$i" }
+                val name = o.optString("title").ifEmpty { o.optString("name") }
+                if (name.isBlank()) return@mapNotNull null
+                BookResult(
+                    id = id,
+                    name = name,
+                    author = o.optString("writer", o.optString("author", "")),
+                    coverUrl = o.optString("cover", o.optString("coverUrl", "")),
+                    bookUrl = o.optString("url", o.optString("bookUrl", id)),
+                    sourceName = sourceName
+                )
+            }.getOrNull()
+        }
     }
 
     override suspend fun getToc(bookId: String): List<Chapter> {

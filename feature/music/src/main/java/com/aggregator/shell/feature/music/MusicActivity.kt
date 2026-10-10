@@ -360,7 +360,7 @@ private fun TextButtonPlaceholder(onClick: () -> Unit) {
 
 private fun songInFav(ui: MusicPlayerUi, favs: List<com.aggregator.shell.core.data.local.entity.FavoriteEntity>): Boolean {
     val song = ui.queue.getOrNull(ui.queueIndex) ?: return false
-    return favs.any { it.contentId == song.id }
+    return favs.any { it.contentId == song.id && it.module == "music" }
 }
 
 private fun formatTime(ms: Long): String {

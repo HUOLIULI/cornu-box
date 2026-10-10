@@ -47,6 +47,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import com.aggregator.shell.core.media.player.PlayerCore
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -63,7 +66,6 @@ import com.aggregator.shell.core.source.api.BookResult
 import com.aggregator.shell.core.source.api.Chapter
 import com.aggregator.shell.core.ui.components.EmptyState
 import com.aggregator.shell.core.ui.theme.AppTheme
-import dagger.hilt.android.AndroidEntryPoint
 
 /**
  * Reader feature：书架 / 搜索（含最近搜索 chips）/ 目录 / 正文 四段式。
@@ -72,12 +74,17 @@ import dagger.hilt.android.AndroidEntryPoint
  * 选章读正文并自动回写阅读进度到书架（Room）。数据走 [ReaderViewModel]。
  */
 @OptIn(ExperimentalMaterial3Api::class)
+@AndroidEntryPoint
 class ReaderActivity : ComponentActivity() {
 
     private val vm: ReaderViewModel by viewModels()
 
+    @Inject
+    lateinit var playerCore: PlayerCore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        playerCore.initialize(this)
         val extraBookId = intent.getStringExtra("extra_book_id")
         val extraBookSource = intent.getStringExtra("extra_book_source")
         val extraBookName = intent.getStringExtra("extra_book_name")
@@ -128,7 +135,8 @@ class ReaderActivity : ComponentActivity() {
                                 ui = ui.value,
                                 onBack = { vm.backToShelf() },
                                 onOpenChapter = { vm.openChapter(it) },
-                                onRemoveFromShelf = { vm.removeFromBookshelf(it) }
+                                onRemoveFromShelf = { vm.removeFromBookshelf(it) },
+                                onSpeak = { vm.speak() }
                             )
 
                             else -> {
@@ -317,7 +325,8 @@ private fun BookDetailScreen(
     ui: ReaderUiState,
     onBack: () -> Unit,
     onOpenChapter: (Chapter) -> Unit,
-    onRemoveFromShelf: (String) -> Unit
+    onRemoveFromShelf: (String) -> Unit,
+    onSpeak: () -> Unit = {}
 ) {
     val book = ui.currentBook ?: return
     Column(Modifier.fillMaxSize()) {
@@ -368,6 +377,7 @@ private fun BookDetailScreen(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f, fill = false)
                     )
+                    OutlinedButton(onClick = { onSpeak() }) { Text("TTS 朗读") }
                     OutlinedButton(onClick = { onBack() }) { Text("返回目录") }
                 }
                 if (ui.contentLoading) {

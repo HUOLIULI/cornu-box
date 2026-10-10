@@ -52,6 +52,15 @@ object AiModule {
         cloud: CloudLlmAssistant,
         heuristic: HeuristicAssistant
     ): AiSourceAssistant = LlmDelegatingAssistant(context, cloud, heuristic)
+
+    @Provides
+    @Singleton
+    fun provideTtsAssistant(
+        @ApplicationContext context: Context,
+        cloud: com.aggregator.shell.core.ai.CloudTtsAssistant,
+        offline: com.aggregator.shell.core.ai.OfflineTtsAssistant
+    ): com.aggregator.shell.core.ai.TtsAssistant =
+        com.aggregator.shell.core.ai.TtsDelegatingAssistant(context, cloud, offline)
 }
 
 /**

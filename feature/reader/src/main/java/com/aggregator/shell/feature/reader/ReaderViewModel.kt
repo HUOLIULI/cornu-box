@@ -43,7 +43,9 @@ data class ReaderUiState(
 class ReaderViewModel @Inject constructor(
     private val readerEngine: ReaderEngine,
     private val bookshelfDao: BookshelfDao,
-    private val searchHistoryDao: SearchHistoryDao
+    private val searchHistoryDao: SearchHistoryDao,
+    private val ttsAssistant: com.aggregator.shell.core.ai.TtsAssistant,
+    private val playerCore: com.aggregator.shell.core.media.player.PlayerCore
 ) : ViewModel() {
 
     private val _ui = MutableStateFlow(ReaderUiState())
@@ -95,6 +97,37 @@ class ReaderViewModel @Inject constructor(
             if (book != null && _ui.value.toc.isNotEmpty()) {
                 val progress = (_ui.value.toc.indexOfFirst { it == chapter } + 1).toFloat() / _ui.value.toc.size
                 updateBookshelf(book, chapter, progress)
+            }
+        }
+    }
+
+    /**
+     * TTS 朗读当前章节：把 [ReaderUiState.content] 送 [TtsAssistant] 合成（云端/离线），
+     * 得到 MP3 流 URL 后经 [PlayerCore] 播放。未配置云端 TTS 时离线实现返回空，
+     * 走 [onTtsError] 提示。
+     */
+    fun speak(onDone: () -> Unit = {}, onError: (String) -> Unit = {}) {
+        val text = _ui.value.content
+        if (text.isBlank()) {
+            onError("无正文可朗读")
+            return
+        }
+        viewModelScope.launch {
+            val result = runCatching { ttsAssistant.synthesize(text) }
+            result.onSuccess { url ->
+                if (url.isNullOrBlank()) {
+                    onError("TTS 未配置或无结果（请在设置填入 TTS Base URL / API Key）")
+                } else {
+                    // 由 Activity 在 onCreate 先 playerCore.initialize；这里只切流播放。
+                    playerCore.switchUrl(
+                        com.aggregator.shell.core.media.player.PlayMediaItem(
+                            url = url, name = "朗读：${_ui.value.currentChapter?.title.orEmpty()}", isHls = false
+                        )
+                    )
+                    onDone()
+                }
+            }.onFailure {
+                onError(it.message ?: "TTS 合成失败")
             }
         }
     }
