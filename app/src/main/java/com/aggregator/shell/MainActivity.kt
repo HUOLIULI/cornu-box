@@ -13,8 +13,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -33,6 +40,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -113,7 +123,12 @@ class MainActivity : ComponentActivity() {
                     .padding(innerPadding)
             ) {
                 composable("video") {
-                    Column(Modifier.padding(16.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
                         if (latestVideo != null) {
                             QuickEntryCard(
                                 title = "继续播放",
@@ -127,7 +142,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 composable("reader") {
-                    Column(Modifier.padding(16.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
                         if (latestBook != null) {
                             QuickEntryCard(
                                 title = "继续阅读",
@@ -140,8 +160,26 @@ class MainActivity : ComponentActivity() {
                         BridgePanel("阅读", ReaderActivity::class.java)
                     }
                 }
-                composable("music") { BridgePanel("音乐", MusicActivity::class.java) }
-                composable("settings") { BridgePanel("设置", SettingsActivity::class.java) }
+                composable("music") {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
+                        BridgePanel("音乐", MusicActivity::class.java)
+                    }
+                }
+                composable("settings") {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
+                        BridgePanel("设置", SettingsActivity::class.java)
+                    }
+                }
             }
         }
     }
@@ -156,22 +194,25 @@ class MainActivity : ComponentActivity() {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp)
+                .padding(vertical = 4.dp),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Row(
                 Modifier
                     .padding(12.dp)
                     .fillMaxWidth(),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(8.dp))
-                Column {
-                    Text(title, style = MaterialTheme.typography.titleSmall)
-                    Text(subtitle, style = MaterialTheme.typography.bodySmall)
+                Icon(icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+                    Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Spacer(Modifier.weight(1f))
-                Button(onClick = onClick) { Text("打开") }
+                Button(onClick = onClick, shape = RoundedCornerShape(8.dp), contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)) {
+                    Text("打开", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }
@@ -203,17 +244,21 @@ class MainActivity : ComponentActivity() {
         target: Class<out ComponentActivity>
     ) {
         val context = LocalContext.current
-        Column(Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "模块已接入。点击按钮进入完整体验。",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Spacer(Modifier.height(16.dp))
-            Button(onClick = {
-                context.startActivity(Intent(context, target))
-            }) { Text("进入$title") }
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(24.dp)) {
+                Text(title, style = MaterialTheme.typography.titleLarge)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = "模块已接入。点击按钮进入完整体验。",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.height(16.dp))
+                Button(onClick = {
+                    context.startActivity(Intent(context, target))
+                }) { Text("进入$title") }
+            }
         }
     }
 }

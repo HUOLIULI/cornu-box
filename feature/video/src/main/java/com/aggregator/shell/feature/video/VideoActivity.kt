@@ -839,10 +839,13 @@ private fun HistoryCard(item: PlayHistoryEntity, onResume: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
-            .clickable(onClick = onResume)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onResume),
+        shape = RoundedCornerShape(14.dp),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(14.dp)) {
             Text(item.title, style = MaterialTheme.typography.titleMedium)
             Text(
                 "模块: ${item.module} · ${formatDate(item.updated)}",

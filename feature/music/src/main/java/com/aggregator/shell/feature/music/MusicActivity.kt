@@ -234,16 +234,31 @@ class MusicActivity : ComponentActivity() {
                             }
                         }
 
-                        when {
-                            loading -> Box(
-                                Modifier.fillMaxSize().padding(24.dp),
-                                contentAlignment = Alignment.Center
-                            ) { CircularProgressIndicator() }
+                            if (songs.isEmpty() && !loading) {
+                                Box(
+                                    Modifier
+                                        .fillMaxSize()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "未找到歌曲",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                    )
+                                }
+                            } else {
+                                when {
+                                    loading -> Box(
+                                        Modifier.fillMaxSize().padding(24.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) { CircularProgressIndicator() }
 
-                            else -> LazyColumn(Modifier.fillMaxSize()) {
-                                items(songs) { SongCard(it, model) }
+                                    else -> LazyColumn(Modifier.fillMaxSize()) {
+                                        items(songs) { SongCard(it, model) }
+                                    }
+                                }
                             }
-                        }
                     }
                     1 -> {
                         // History Tab
@@ -406,9 +421,12 @@ class MusicActivity : ComponentActivity() {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(14.dp)),
+            shape = RoundedCornerShape(14.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
-            Column(Modifier.padding(12.dp)) {
+            Column(Modifier.padding(14.dp)) {
                 Text(item.title, style = MaterialTheme.typography.titleMedium)
                 Text(
                     "模块: ${item.module} · ${formatDate(item.updated)}",
@@ -431,11 +449,14 @@ class MusicActivity : ComponentActivity() {
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(14.dp)),
+            shape = RoundedCornerShape(14.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Row(
                 Modifier
-                    .padding(12.dp)
+                    .padding(14.dp)
                     .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
