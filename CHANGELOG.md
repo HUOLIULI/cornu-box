@@ -5,6 +5,18 @@ MediaShell（com.aggregator.shell）— 多源聚合阅读 / 影视 / 音乐壳�
 ## 1.6.0
 
 ### 新增
+- 完全吸纳对标 APK 能力（纯 Kotlin 可移植部分全移植，未移植项从零实现）：
+  - 影视播放韧性（对标 PeekPro）：`PlaybackResilience`（直播窗口识别 / 网页误返 / DASH 回退）
+    + `SslBypassClient`（证书不受信源）+ `LineRetryPolicy`（指数退避）；`PlayerCore` 按线路退避重试，
+    `VideoViewModel` 播放失败自动回退其它线路（`fallbackToNextLine`），全线路失败才提示
+  - 媒体自定义请求头：`ExoPlayerCore` 经 `DefaultHttpDataSource` 注入 Referer/UA/Cookie（`PlayMediaItem.headers`）
+  - 音乐媒体通知 / 焦点（对标 PeekPro 锁屏媒体控制 + DsPlayer 后台音频）：
+    `MediaPlaybackService` 前台通知带 播放/暂停、停止 媒体按钮；`AudioFocusManager` 失焦暂停、复焦续播
+  - 阅读 TTS 缓存 + 连续朗读（对标 Legado 听书）：`CloudTtsAssistant` 按 SHA-1(model|voice|text)
+    缓存 MP3（LRU 64 条，命中不重合成）；`TtsConfigKeys.MODEL`；`ReaderViewModel` 订阅
+    `PlayerCore.playbackEnded` 章节读完自动切下一章连续朗读，含停止朗读
+  - 黑金 PeekPro 风格 UI：`core:ui` 新增 `PeekColors`（近黑 + 金色）与 `PeekComponents`
+    （`PeekMediaCard`/`CardPeek`/`PeekHeader`/`CoilCover`），`MainActivity` 入口卡片全面改 PeekPro 观感
 - AI 真实 LLM：`LlmDelegatingAssistant` 按本机 DataStore 配置动态切换云端 / 离线；
   `CloudLlmAssistant` 走 OpenAI 兼容 `/chat/completions`（专用 OkHttp 客户端，读超时 120s）
   并支持自定义模型（`LlmConfigKeys.MODEL`，默认 `gpt-3.5-turbo`）；未配置时回退离线规则助手；

@@ -36,6 +36,7 @@ data class ReaderUiState(
     val contentLoading: Boolean = false,
     val tocLoading: Boolean = false,
     val searchLoading: Boolean = false,
+    val ttsReading: Boolean = false,
     val error: String? = null
 )
 
@@ -54,6 +55,12 @@ class ReaderViewModel @Inject constructor(
     init {
         viewModelScope.launch { bookshelfDao.all().collectLatest { s -> _ui.value = _ui.value.copy(bookshelf = s) } }
         viewModelScope.launch { searchHistoryDao.recent().collectLatest { s -> _ui.value = _ui.value.copy(searchHistory = s) } }
+        // 连续朗读：当前章节音频自然播放结束后自动切下一章
+        viewModelScope.launch {
+            playerCore.playbackEnded.collect {
+                if (_ui.value.ttsReading) speakNextChapter()
+            }
+        }
     }
 
     fun search(keyword: String) {
@@ -88,17 +95,20 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun openChapter(chapter: Chapter) {
+        viewModelScope.launch { loadChapter(chapter) }
+    }
+
+    /** 加载章节正文并回写阅读进度；返回正文内容，供连续朗读复用。 */
+    private suspend fun loadChapter(chapter: Chapter): String {
         _ui.value = _ui.value.copy(currentChapter = chapter, contentLoading = true, content = "")
-        viewModelScope.launch {
-            val content = runCatching { readerEngine.getContent(chapter.url.ifBlank { chapter.title }) }.getOrDefault("")
-            _ui.value = _ui.value.copy(content = content, contentLoading = false)
-            // 回写阅读进度
-            val book = _ui.value.currentBook
-            if (book != null && _ui.value.toc.isNotEmpty()) {
-                val progress = (_ui.value.toc.indexOfFirst { it == chapter } + 1).toFloat() / _ui.value.toc.size
-                updateBookshelf(book, chapter, progress)
-            }
+        val content = runCatching { readerEngine.getContent(chapter.url.ifBlank { chapter.title }) }.getOrDefault("")
+        _ui.value = _ui.value.copy(content = content, contentLoading = false)
+        val book = _ui.value.currentBook
+        if (book != null && _ui.value.toc.isNotEmpty()) {
+            val progress = (_ui.value.toc.indexOfFirst { it == chapter } + 1).toFloat() / _ui.value.toc.size
+            updateBookshelf(book, chapter, progress)
         }
+        return content
     }
 
     /**
@@ -112,10 +122,12 @@ class ReaderViewModel @Inject constructor(
             onError("无正文可朗读")
             return
         }
+        _ui.value = _ui.value.copy(ttsReading = true)
         viewModelScope.launch {
             val result = runCatching { ttsAssistant.synthesize(text) }
             result.onSuccess { url ->
                 if (url.isNullOrBlank()) {
+                    _ui.value = _ui.value.copy(ttsReading = false)
                     onError("TTS 未配置或无结果（请在设置填入 TTS Base URL / API Key）")
                 } else {
                     // 由 Activity 在 onCreate 先 playerCore.initialize；这里只切流播放。
@@ -127,9 +139,43 @@ class ReaderViewModel @Inject constructor(
                     onDone()
                 }
             }.onFailure {
+                _ui.value = _ui.value.copy(ttsReading = false)
                 onError(it.message ?: "TTS 合成失败")
             }
         }
+    }
+
+    /** 停止连续朗读。 */
+    fun stopSpeaking() {
+        _ui.value = _ui.value.copy(ttsReading = false)
+        playerCore.pause()
+    }
+
+    /** 播放失败 / 章节无正文时，连续朗读链路终止，避免静默卡死。 */
+    private suspend fun speakNextChapter() {
+        val toc = _ui.value.toc
+        val cur = _ui.value.currentChapter ?: run {
+            _ui.value = _ui.value.copy(ttsReading = false); return
+        }
+        val idx = toc.indexOfFirst { it == cur }
+        val next = toc.getOrNull(idx + 1) ?: run {
+            _ui.value = _ui.value.copy(ttsReading = false); return
+        }
+        val text = loadChapter(next)
+        if (text.isBlank()) {
+            _ui.value = _ui.value.copy(ttsReading = false)
+            return
+        }
+        val url = runCatching { ttsAssistant.synthesize(text) }.getOrNull()
+        if (url.isNullOrBlank()) {
+            _ui.value = _ui.value.copy(ttsReading = false)
+            return
+        }
+        playerCore.switchUrl(
+            com.aggregator.shell.core.media.player.PlayMediaItem(
+                url = url, name = "朗读：${next.title}", isHls = false
+            )
+        )
     }
 
     fun backToShelf() {

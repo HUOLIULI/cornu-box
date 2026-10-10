@@ -136,7 +136,8 @@ class ReaderActivity : ComponentActivity() {
                                 onBack = { vm.backToShelf() },
                                 onOpenChapter = { vm.openChapter(it) },
                                 onRemoveFromShelf = { vm.removeFromBookshelf(it) },
-                                onSpeak = { vm.speak() }
+                                onSpeak = { vm.speak() },
+                                onStopSpeak = { vm.stopSpeaking() }
                             )
 
                             else -> {
@@ -326,7 +327,8 @@ private fun BookDetailScreen(
     onBack: () -> Unit,
     onOpenChapter: (Chapter) -> Unit,
     onRemoveFromShelf: (String) -> Unit,
-    onSpeak: () -> Unit = {}
+    onSpeak: () -> Unit = {},
+    onStopSpeak: () -> Unit = {}
 ) {
     val book = ui.currentBook ?: return
     Column(Modifier.fillMaxSize()) {
@@ -377,7 +379,9 @@ private fun BookDetailScreen(
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    OutlinedButton(onClick = { onSpeak() }) { Text("TTS 朗读") }
+                    OutlinedButton(onClick = { if (ui.ttsReading) onStopSpeak() else onSpeak() }) {
+                        Text(if (ui.ttsReading) "停止朗读" else "TTS 朗读")
+                    }
                     OutlinedButton(onClick = { onBack() }) { Text("返回目录") }
                 }
                 if (ui.contentLoading) {

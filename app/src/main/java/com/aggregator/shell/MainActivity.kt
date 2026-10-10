@@ -51,6 +51,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.aggregator.shell.core.ui.components.CardPeek
 import com.aggregator.shell.core.ui.theme.AppTheme
 import com.aggregator.shell.feature.music.MusicActivity
 import com.aggregator.shell.feature.my.MyPageActivity
@@ -146,22 +147,18 @@ class MainActivity : ComponentActivity() {
         target: Class<out ComponentActivity>,
         context: android.content.Context
     ) {
-        Card(
+        CardPeek(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
+                .padding(bottom = 8.dp)
         ) {
             Column(Modifier.padding(20.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineMedium)
+                Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = moduleHint(target),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                 )
                 Spacer(Modifier.height(16.dp))
                 Button(
@@ -190,13 +187,7 @@ class MainActivity : ComponentActivity() {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(caps) { cap ->
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                CardPeek(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         Modifier.padding(14.dp),
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically

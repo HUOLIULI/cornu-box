@@ -74,6 +74,7 @@ class SettingsActivity : ComponentActivity() {
         var ttsUrl by remember { mutableStateOf("") }
         var ttsKey by remember { mutableStateOf("") }
         var ttsVoice by remember { mutableStateOf("") }
+        var ttsModel by remember { mutableStateOf("") }
         LaunchedEffect(Unit) {
             val prefs = context.appDataStore.data.first()
             baseUrl = prefs[LlmConfigKeys.BASE_URL] ?: ""
@@ -84,6 +85,7 @@ class SettingsActivity : ComponentActivity() {
             ttsUrl = prefs[TtsConfigKeys.BASE_URL] ?: ""
             ttsKey = prefs[TtsConfigKeys.API_KEY] ?: ""
             ttsVoice = prefs[TtsConfigKeys.VOICE] ?: ""
+            ttsModel = prefs[TtsConfigKeys.MODEL] ?: ""
         }
 
         Column(
@@ -260,6 +262,13 @@ class SettingsActivity : ComponentActivity() {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = ttsModel,
+                onValueChange = { v -> ttsModel = v },
+                label = { Text("TTS 模型（可选，默认 tts-1）") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
                     scope.launch {
@@ -267,6 +276,7 @@ class SettingsActivity : ComponentActivity() {
                             p[TtsConfigKeys.BASE_URL] = ttsUrl.trim()
                             p[TtsConfigKeys.API_KEY] = ttsKey.trim()
                             p[TtsConfigKeys.VOICE] = ttsVoice.trim()
+                            p[TtsConfigKeys.MODEL] = ttsModel.trim()
                         }
                         msg = "TTS 配置已保存"
                     }

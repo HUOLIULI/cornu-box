@@ -5,22 +5,28 @@ import android.content.Intent
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.aggregator.shell.core.common.AppException
+import com.aggregator.shell.core.media.AudioFocusManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.pow
 
 enum class PlayerState { Idle, Loading, Ready, Paused, Error }
 
@@ -36,6 +42,8 @@ interface PlayerCore {
     val state: StateFlow<PlayerState>
     /** 播放位置（毫秒）的实时流，供进度条 / 歌词同步等 UI 订阅。 */
     val positionMs: StateFlow<Long>
+    /** 单次媒体自然播放结束事件，供阅读连续朗读 / 影视自动连播订阅。 */
+    val playbackEnded: SharedFlow<Unit>
     fun initialize(context: Context)
     fun startService(context: Context)
     fun stopService(context: Context)
@@ -56,12 +64,17 @@ interface PlayerCore {
 
     /** 解除绑定。 */
     fun detachPlayerView()
+
+    /** 暴露底层 [ExoPlayer] 供 [MediaSession] 绑定媒体控制（锁屏 / 通知栏）。 */
+    fun sessionPlayer(): androidx.media3.common.Player?
 }
 
 class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
 
     private var player: ExoPlayer? = null
+    private var httpFactory: DefaultHttpDataSource.Factory? = null
     private var pendingView: PlayerView? = null
+    private var audioFocus: AudioFocusManager? = null
     private var current: PlayMediaItem? = null
     private var pendingSeekMs: Long = 0L
     private var seekApplied = false
@@ -75,10 +88,29 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     override val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
     private var positionTicker: Job? = null
 
+    private val _playbackEnded = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1, onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST
+    )
+    override val playbackEnded: SharedFlow<Unit> = _playbackEnded.asSharedFlow()
+
     override fun initialize(context: Context) {
         if (player == null) {
-            player = ExoPlayer.Builder(context).build().also { p ->
-                p.addListener(object : Player.Listener {
+            val http = DefaultHttpDataSource.Factory()
+                .setConnectTimeoutMs(15_000)
+                .setReadTimeoutMs(30_000)
+                .setAllowCrossProtocolRedirects(true)
+                .setUserAgent("MediaShell/1.6")
+            httpFactory = http
+            val mediaSourceFactory = DefaultMediaSourceFactory(
+                DefaultDataSource.Factory(context, http)
+            )
+            player = ExoPlayer.Builder(context)
+                .setMediaSourceFactory(mediaSourceFactory)
+                .build()
+                .also { p ->
+                    audioFocus = AudioFocusManager(context)
+                    audioFocus?.bind(p)
+                    p.addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         _state.value = PlayerState.Error
                         scheduleRetry()
@@ -90,6 +122,9 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
 
                     override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
                         applyPendingSeek()
+                        if (playbackState == Player.STATE_ENDED) {
+                            _playbackEnded.tryEmit(Unit)
+                        }
                     }
                 })
             }
@@ -116,6 +151,8 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         pendingView = null
     }
 
+    override fun sessionPlayer(): androidx.media3.common.Player? = player
+
     override suspend fun prepare(item: PlayMediaItem) {
         if (item.url.isBlank() || !PlayUrlValidator.validate(item.url)) {
             _state.value = PlayerState.Error
@@ -127,6 +164,8 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         seekApplied = false
         withContext(Dispatchers.Main) {
             val p = player ?: throw IllegalStateException("Player not initialized")
+            applyHeaders(item)
+            audioFocus?.requestFocus()
             p.setMediaItem(MediaItem.fromUri(item.url))
             p.prepare()
             p.playWhenReady = true
@@ -148,11 +187,19 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         // release() 后 player 为 null：先重建再切，避免「状态置 Loading 但无媒体项」的不一致。
         if (player == null) return
         player?.let {
+            applyHeaders(item)
+            audioFocus?.requestFocus()
             it.setMediaItem(MediaItem.fromUri(item.url))
             it.prepare()
             it.playWhenReady = true
         }
         _state.value = PlayerState.Loading
+    }
+
+    /** 把当前媒体项的自定义请求头（Referer / UA / Cookie 等）注入 HTTP 数据源。 */
+    private fun applyHeaders(item: PlayMediaItem) {
+        val f = httpFactory ?: return
+        f.setDefaultRequestProperties(item.headers)
     }
 
     override fun pause() {
@@ -163,6 +210,7 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
 
     override fun resume() {
         if (player == null) return
+        audioFocus?.requestFocus()
         player?.play()
         _state.value = PlayerState.Ready
     }
@@ -196,6 +244,10 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         }
     }
 
+    private companion object {
+        const val MAX_RETRY = 5
+    }
+
     override fun release() {
         // 幂等：已 release 时不重复 cancel scope（避免 scheduleRetry 内的 scope.launch 抛异常）
         scope.cancel()
@@ -209,6 +261,8 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         pendingSeekMs = 0L
         seekApplied = false
         retryCount = 0
+        audioFocus?.releaseFocus()
+        audioFocus = null
         _positionMs.value = 0L
         _state.value = PlayerState.Idle
     }
@@ -229,13 +283,21 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     }
 
     private fun scheduleRetry() {
-        if (retryCount >= 5) return
         val cur = current ?: return
+        if (retryCount >= MAX_RETRY) return
+        val attempt = retryCount
         retryJob?.cancel()
         retryJob = scope.launch {
-            val backoff = minOf(2.0.pow(retryCount).toInt(), 15) * 1000L
-            delay(backoff.toLong())
-            retryCount++
+            // PeekPro 风格：直播窗口掉出/DASH 回退时按线路退避重试
+            val delay = if (PlaybackResilience.liveWindowRetryHint(cur.url, attempt)) {
+                800L
+            } else {
+                LineRetryPolicy.nextDelayMs(attempt)
+            }
+            delay(delay)
+            // 若期间已切换线路/媒体项，放弃本次重试，避免用旧 URL 覆盖新线路。
+            if (current !== cur) return@launch
+            retryCount = attempt + 1
             runCatching { prepare(cur) }
                 .onFailure { _state.value = PlayerState.Error }
         }

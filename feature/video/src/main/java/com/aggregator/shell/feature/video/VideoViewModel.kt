@@ -117,6 +117,14 @@ class VideoViewModel @Inject constructor(
     private val _epg = MutableStateFlow(com.aggregator.shell.core.media.epg.EpgSnapshot(null, null, emptyList()))
     val epg: StateFlow<com.aggregator.shell.core.media.epg.EpgSnapshot> = _epg.asStateFlow()
 
+    // ---------- 播放韧性：多线路回退 ----------
+    /** 当前线路下标（1 基，对齐 episodes Map 迭代顺序）。 */
+    private var currentLineIdx = 1
+    /** 当前集下标（1 基）。 */
+    private var currentEpIdx = 1
+    /** 本轮已尝试过的 "线路-集" 组合，成功 Ready 后清空，避免反复回退死循环。 */
+    private val triedLines = mutableSetOf<String>()
+
     fun refresh(keyword: String = "演示") {
         viewModelScope.launch {
             _loadingResults.value = true
@@ -274,6 +282,9 @@ class VideoViewModel @Inject constructor(
             }
             val play = runCatching { videoEngine.getPlayUrl(item.id, "1-1") }.getOrNull()
             val resumePos = resumePositionFor(item.sourceKey, item.id)
+            currentLineIdx = 1
+            currentEpIdx = 1
+            triedLines.clear()
             val media = mediaItemFor(item, play, detail, resumePos)
             _play.value = _play.value.copy(
                 loading = false,
@@ -287,13 +298,20 @@ class VideoViewModel @Inject constructor(
         }
     }
 
-    /** 切换线路/集：flag 形如 "lineIndex-epIndex"（1 基）。 */
+    /** 切换线路/集：flag 形如 "lineIndex-epIndex"（1 基）。用户主动切换会重置回退记录。 */
     fun switchEpisode(lineIdx: Int, epIdx: Int) {
+        switchEpisodeInternal(lineIdx, epIdx, isFallback = false)
+    }
+
+    private fun switchEpisodeInternal(lineIdx: Int, epIdx: Int, isFallback: Boolean) {
         viewModelScope.launch {
             val d = _play.value.detail ?: return@launch
             val play = runCatching {
                 videoEngine.getPlayUrl(d.id, "${lineIdx + 1}-${epIdx + 1}")
             }.getOrNull() ?: return@launch
+            currentLineIdx = lineIdx + 1
+            currentEpIdx = epIdx + 1
+            if (!isFallback) triedLines.clear()
             val item = PlayMediaItem(
                 url = play.url,
                 headers = play.headers,
@@ -304,6 +322,24 @@ class VideoViewModel @Inject constructor(
             runCatching { playerCore.switchUrl(item) }
             loadDanmaku(d.title, epIdx + 1)
         }
+    }
+
+    /**
+     * 播放韧性：线路播放失败（[PlayerState.Error]）时自动回退到其它线路的同一集，
+     * 全部线路失败才提示。对标 PeekPro 的多线路切换。
+     */
+    private fun fallbackToNextLine() {
+        val d = _play.value.detail ?: return
+        val lines = d.episodes.values.toList()
+        if (lines.size <= 1) return
+        triedLines.add("$currentLineIdx-$currentEpIdx")
+        val next = (1..lines.size).firstOrNull { ln ->
+            lines[ln - 1].getOrNull(currentEpIdx - 1) != null && "$ln-$currentEpIdx" !in triedLines
+        } ?: run {
+            _play.value = _play.value.copy(error = "所有线路均不可用")
+            return
+        }
+        switchEpisodeInternal(next - 1, currentEpIdx - 1, isFallback = true)
     }
 
     fun exitPlayback() {
@@ -360,6 +396,11 @@ class VideoViewModel @Inject constructor(
         viewModelScope.launch {
             playerCore.state.collect { state ->
                 _play.value = _play.value.copy(playerState = state)
+                when (state) {
+                    PlayerState.Ready -> triedLines.clear()
+                    PlayerState.Error -> fallbackToNextLine()
+                    else -> {}
+                }
             }
         }
         viewModelScope.launch {

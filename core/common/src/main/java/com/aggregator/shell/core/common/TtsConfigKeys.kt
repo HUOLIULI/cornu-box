@@ -9,4 +9,5 @@ object TtsConfigKeys {
     val BASE_URL = stringPreferencesKey("tts_base_url")
     val API_KEY = stringPreferencesKey("tts_api_key")
     val VOICE = stringPreferencesKey("tts_voice")
+    val MODEL = stringPreferencesKey("tts_model")
 }

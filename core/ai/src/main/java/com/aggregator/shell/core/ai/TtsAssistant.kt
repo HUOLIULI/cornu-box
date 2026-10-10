@@ -41,6 +41,8 @@ class CloudTtsAssistant @Inject constructor(
         const val DEFAULT_MODEL = "tts-1"
         const val DEFAULT_VOICE = "alloy"
         const val MAX_CHARS = 5000
+        const val CACHE_DIR = "tts_cache"
+        const val MAX_CACHE_FILES = 64
     }
 
     override suspend fun synthesize(text: String): String? = withContext(Dispatchers.IO) {
@@ -50,9 +52,18 @@ class CloudTtsAssistant @Inject constructor(
         val apiKey = prefs[TtsConfigKeys.API_KEY]?.trim()?.takeIf { it.isNotBlank() }
         if (baseUrl.isEmpty() || apiKey == null) return@withContext null
         val voice = prefs[TtsConfigKeys.VOICE]?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_VOICE
+        val model = prefs[TtsConfigKeys.MODEL]?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_MODEL
+
+        val cacheDir = java.io.File(context.cacheDir, CACHE_DIR).apply { mkdirs() }
+        val cacheKey = cacheKeyOf("$model|$voice|${text.take(MAX_CHARS)}")
+        val cached = java.io.File(cacheDir, "$cacheKey.mp3")
+        if (cached.exists() && cached.length() > 0) {
+            cached.setLastModified(System.currentTimeMillis())
+            return@withContext "file://${cached.absolutePath}"
+        }
 
         val body = JSONObject().apply {
-            put("model", DEFAULT_MODEL)
+            put("model", model)
             put("voice", voice)
             put("input", text.take(MAX_CHARS))
         }
@@ -70,10 +81,27 @@ class CloudTtsAssistant @Inject constructor(
         }
         if (bytes.isEmpty()) return@withContext null
 
-        val out = java.io.File(context.cacheDir, "tts_${System.currentTimeMillis()}.mp3")
-        out.writeBytes(bytes)
-        out.deleteOnExit()
-        "file://${out.absolutePath}"
+        val tmp = java.io.File(cacheDir, "$cacheKey.tmp")
+        tmp.writeBytes(bytes)
+        if (!tmp.renameTo(cached)) {
+            tmp.copyTo(cached, overwrite = true)
+            tmp.delete()
+        }
+        trimCache(cacheDir)
+        "file://${cached.absolutePath}"
+    }
+
+    private fun cacheKeyOf(input: String): String =
+        java.security.MessageDigest.getInstance("SHA-1")
+            .digest(input.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+    private fun trimCache(dir: java.io.File) {
+        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".mp3") } ?: return
+        if (files.size <= MAX_CACHE_FILES) return
+        files.sortedBy { it.lastModified() }
+            .take(files.size - MAX_CACHE_FILES)
+            .forEach { runCatching { it.delete() } }
     }
 }
 
