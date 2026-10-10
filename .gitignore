@@ -180,3 +180,4 @@ local.properties
 
 # Android APK 产物（不入 Git，需自行编译）
 *.apk
+!gradle/wrapper/gradle-wrapper.jar
