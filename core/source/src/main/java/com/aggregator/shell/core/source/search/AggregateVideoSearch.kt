@@ -57,10 +57,10 @@ class AggregateVideoSearch(
             AggregateVideoResult(item, sourceKeysByTitle[key] ?: emptyList())
         }.sortedWith(
             if (kw.isEmpty()) {
-                compareByDescending { it.sourceKeys.size }
+                compareByDescending<AggregateVideoResult> { it.sourceKeys.size }
             } else {
-                compareByDescending { it.result.title.lowercase().contains(kw) }
-                    .then(compareByDescending { it.sourceKeys.size })
+                compareByDescending<AggregateVideoResult> { it.result.title.lowercase().contains(kw) }
+                    .thenByDescending { it.sourceKeys.size }
             }
         )
     }
