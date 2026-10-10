@@ -5,6 +5,7 @@ import android.net.Uri
 import com.aggregator.shell.core.data.local.AppDatabase
 import com.aggregator.shell.core.data.local.entity.*
 import com.aggregator.shell.core.data.di.appDataStore
+import androidx.datastore.preferences.core.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
