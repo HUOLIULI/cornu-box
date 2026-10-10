@@ -40,6 +40,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,8 +54,9 @@ import androidx.compose.ui.unit.sp
 import com.aggregator.shell.core.source.api.BookResult
 import com.aggregator.shell.core.source.api.Chapter
 import com.aggregator.shell.core.source.api.ReaderEngine
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderPageUi(
     book: BookResult,
@@ -72,6 +74,7 @@ fun ReaderPageUi(
     var showToc by remember { mutableStateOf(false) }
     var chapters by remember { mutableStateOf<List<Chapter>>(emptyList()) }
     var isSettingsOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val pagerState = rememberPagerState(
         initialPage = startIndex,
@@ -213,7 +216,7 @@ fun ReaderPageUi(
             progressAnim = progressAnim,
             accent = accent,
             onChapterClick = { index ->
-                pagerState.scrollToPage(index)
+                scope.launch { pagerState.scrollToPage(index) }
                 showToc = false
             },
             onDismiss = { showToc = false }
@@ -312,7 +315,8 @@ private fun SettingsPanel(
                 checked = eyeCare,
                 onCheckedChange = onEyeCareToggle,
                 colors = androidx.compose.material3.SwitchDefaults.colors(
-                    checkedColor = accent
+                    checkedThumbColor = accent,
+                    checkedTrackColor = accent.copy(alpha = 0.5f)
                 )
             )
         }
@@ -421,7 +425,8 @@ private fun TocDrawer(
                             .fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        items(chapters, key = { it.index }) { (index, chapter) ->
+                        items(chapters, key = { it.index }) { chapter ->
+                            val index = chapter.index
                             val isSelected = index == currentChapter
                             Row(
                                 Modifier

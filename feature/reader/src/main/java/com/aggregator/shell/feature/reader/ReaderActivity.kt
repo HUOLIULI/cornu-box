@@ -133,16 +133,6 @@ class ReaderActivity : ComponentActivity() {
         var lineHeight by remember { mutableFloatStateOf(1.6f) }
         var eyeCare by remember { mutableStateOf(false) }
 
-        LaunchedEffect(Unit) {
-            val prefs = context.appDataStore.data.first()
-            fontSize = prefs[KEY_FONT_SIZE] ?: 16f
-            lineHeight = prefs[KEY_LINE_HEIGHT] ?: 1.6f
-            eyeCare = prefs[KEY_EYE_CARE] ?: false
-            loadBookshelf()
-            loadFavorites()
-            loadSearchHistory()
-        }
-
         fun saveReaderSettings() {
             scope.launch {
                 context.appDataStore.edit { p ->
@@ -283,6 +273,16 @@ class ReaderActivity : ComponentActivity() {
 
         fun isInFavorites(bookId: String): Boolean {
             return favorites.any { it.contentId == bookId }
+        }
+
+        LaunchedEffect(Unit) {
+            val prefs = context.appDataStore.data.first()
+            fontSize = prefs[KEY_FONT_SIZE] ?: 16f
+            lineHeight = prefs[KEY_LINE_HEIGHT] ?: 1.6f
+            eyeCare = prefs[KEY_EYE_CARE] ?: false
+            loadBookshelf()
+            loadFavorites()
+            loadSearchHistory()
         }
 
         if (readingBook != null) {
@@ -469,7 +469,7 @@ class ReaderActivity : ComponentActivity() {
                                     items(bookshelf) { book ->
                                         BookshelfCard(
                                             book = book,
-                                            onRemove = { removeFromBookshelf(book.id) },
+                                            onRemove = { removeFromBookshelf(book.bookId) },
                                             onRead = { openReader(
                                                 BookResult(
                                                     id = book.bookId,
@@ -685,7 +685,7 @@ class ReaderActivity : ComponentActivity() {
                     .fillMaxWidth()
             ) {
                 AsyncImage(
-                    model = favorite.coverUrl.ifEmpty { null },
+                    model = favorite.coverUrl?.ifEmpty { null },
                     contentDescription = favorite.title,
                     modifier = Modifier
                         .size(84.dp)
