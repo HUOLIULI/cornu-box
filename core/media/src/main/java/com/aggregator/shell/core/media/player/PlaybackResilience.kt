@@ -1,9 +1,10 @@
 package com.aggregator.shell.core.media.player
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import java.security.KeyStore
+import okhttp3.Request
 import java.security.SecureRandom
-import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.net.ssl.SSLContext
@@ -77,4 +78,59 @@ object LineRetryPolicy {
         (baseMs shl attempt).coerceAtMost(capMs)
 
     fun shouldRetry(attempt: Int, maxAttempts: Int): Boolean = attempt < maxAttempts
+}
+
+/**
+ * PeekPro 风格播放前预检（HTTP 层，纯 JVM + OkHttp，无 native）。
+ *
+ * 对候选播放 URL 发一个带 `Range: bytes=0-0` 的 GET，快速判定：
+ * - 成功且 `Content-Type` 非 HTML → 可用
+ * - 响应体含 HTML 特征（[PlaybackResilience.looksLikeHtml]）→ 该线路"返回网页而非流"，
+ *   上层应切下一线路
+ * - 4xx/5xx → 该线路不可用
+ *
+ * 仅用于"切线路前的预筛"，不改变 ExoPlayer 实际解码。默认 8s 超时，
+ * 失败/网络异常时返回 `true`（保守放行，避免误杀可用线路）。
+ */
+object PlayUrlPreflight {
+
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .build()
+
+    /** @return 是否可用（true=放行，false=建议切下一线路）。 */
+    suspend fun check(url: String, headers: Map<String, String> = emptyMap()): Boolean {
+        if (url.isBlank() || !url.startsWith("http")) return true
+        return withContext(Dispatchers.IO) {
+            val builder = Request.Builder().url(url)
+            headers.forEach { (k, v) -> builder.addHeader(k, v) }
+            // Range 请求避免拉整段流；很多源不支持时退回普通 GET
+            builder.addHeader("Range", "bytes=0-0")
+            runCatching {
+                client.newCall(builder.build()).execute().use { r ->
+                    if (r.code in 200..299) {
+                        val ctype = r.header("Content-Type").orEmpty().lowercase()
+                        if (ctype.contains("html")) return@withContext false
+                        // 读一小段判断是否 HTML 正文（最多 4KB）
+                        val buf = okio.Buffer()
+                        r.body?.source()?.readByteArray(4096)?.let { buf.write(it) }
+                        val text = buf.readUtf8().lowercase()
+                        if (PlaybackResilience.looksLikeHtml(text)) return@withContext false
+                        return@withContext true
+                    }
+                    return@withContext r.code in 200..299
+                }
+            }.getOrDefault(true)
+        }
+    }
+
+    /** 从候选线路中挑第一条可用；全不可用返回 null。 */
+    suspend fun firstAvailable(candidates: List<Pair<String, Map<String, String>>>): Int? {
+        candidates.forEachIndexed { i, (url, headers) ->
+            if (check(url, headers)) return i
+        }
+        return null
+    }
 }

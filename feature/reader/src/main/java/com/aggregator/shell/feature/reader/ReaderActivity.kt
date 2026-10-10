@@ -30,8 +30,6 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -64,6 +62,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import coil.compose.AsyncImage
 import com.aggregator.shell.core.source.api.BookResult
 import com.aggregator.shell.core.source.api.Chapter
+import com.aggregator.shell.core.ui.components.CardPeek
 import com.aggregator.shell.core.ui.components.EmptyState
 import com.aggregator.shell.core.ui.theme.AppTheme
 
@@ -205,7 +204,7 @@ private fun BookshelfScreen(
     }
     LazyColumn(Modifier.fillMaxSize()) {
         items(ui.bookshelf) { shelf ->
-            Card(
+            CardPeek(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 6.dp)
@@ -220,9 +219,7 @@ private fun BookshelfScreen(
                                 sourceName = shelf.sourceId
                             )
                         )
-                    },
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                shape = RoundedCornerShape(14.dp)
+                    }
             ) {
                 Row(Modifier.padding(12.dp)) {
                     AsyncImage(
@@ -236,7 +233,7 @@ private fun BookshelfScreen(
                     )
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(shelf.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                        Text(shelf.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(4.dp))
                         Text(shelf.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                         if (shelf.lastChapter.isNotBlank()) {
@@ -407,13 +404,11 @@ private fun BookDetailScreen(
 
 @Composable
 private fun BookCard(b: BookResult, onClick: (BookResult) -> Unit) {
-    Card(
+    CardPeek(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clickable { onClick(b) },
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(14.dp)
+            .clickable { onClick(b) }
     ) {
         Row(Modifier.padding(12.dp).fillMaxWidth()) {
             AsyncImage(
@@ -427,7 +422,7 @@ private fun BookCard(b: BookResult, onClick: (BookResult) -> Unit) {
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(b.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                Text(b.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(4.dp))
                 Text(b.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
                 if (b.sourceName.isNotBlank()) {

@@ -15,6 +15,7 @@ import com.aggregator.shell.core.media.epg.EpgProvider
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.media.player.PlayerState
+import com.aggregator.shell.core.media.player.PlaybackResilience
 import com.aggregator.shell.core.search.SearchAggregator
 import com.aggregator.shell.core.source.api.PlayResult
 import com.aggregator.shell.core.source.api.VideoDetail
@@ -333,13 +334,22 @@ class VideoViewModel @Inject constructor(
         val lines = d.episodes.values.toList()
         if (lines.size <= 1) return
         triedLines.add("$currentLineIdx-$currentEpIdx")
-        val next = (1..lines.size).firstOrNull { ln ->
-            lines[ln - 1].getOrNull(currentEpIdx - 1) != null && "$ln-$currentEpIdx" !in triedLines
-        } ?: run {
+        val candidates = (1..lines.size).mapNotNull { ln ->
+            val url = lines[ln - 1].getOrNull(currentEpIdx - 1)
+            if (url != null && "$ln-$currentEpIdx" !in triedLines) ln else null
+        }
+        if (candidates.isEmpty()) {
             _play.value = _play.value.copy(error = "所有线路均不可用")
             return
         }
-        switchEpisodeInternal(next - 1, currentEpIdx - 1, isFallback = true)
+        // 用 PlayUrlPreflight 预检候选线路，挑第一条真可用的；预检失败则直接按顺序回退。
+        viewModelScope.launch {
+            val idx = com.aggregator.shell.core.media.player.PlayUrlPreflight.firstAvailable(
+                candidates.map { ln -> lines[ln - 1][currentEpIdx - 1] to emptyMap() }
+            )
+            val next = idx?.let { candidates[it] } ?: candidates.first()
+            switchEpisodeInternal(next - 1, currentEpIdx - 1, isFallback = true)
+        }
     }
 
     fun exitPlayback() {
@@ -400,6 +410,27 @@ class VideoViewModel @Inject constructor(
                     PlayerState.Ready -> triedLines.clear()
                     PlayerState.Error -> fallbackToNextLine()
                     else -> {}
+                }
+            }
+        }
+        // 自动连播：非直播流播完自动切下一集；直播流掉出窗口自动重拉当前频道
+        viewModelScope.launch {
+            playerCore.playbackEnded.collect {
+                val detail = _play.value.detail
+                if (detail == null) return@collect
+                val lines = detail.episodes.values
+                if (lines.isEmpty()) return@collect
+                val epList = lines.firstOrNull() ?: return@collect
+                val currentEp = currentEpIdx
+                val nextEp = currentEp + 1
+                if (nextEp <= epList.size) {
+                    // 自动连播：同线路下一集
+                    switchEpisodeInternal(currentLineIdx - 1, nextEp - 1, isFallback = false)
+                } else {
+                    // 已是最后一集：若为直播/单集则重拉（live 窗口掉出）
+                    if (PlaybackResilience.isLiveLike(epList.firstOrNull().orEmpty())) {
+                        switchEpisodeInternal(currentLineIdx - 1, currentEp - 1, isFallback = false)
+                    }
                 }
             }
         }

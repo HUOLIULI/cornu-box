@@ -27,6 +27,14 @@ interface TtsAssistant {
     suspend fun synthesize(text: String): String?
 }
 
+/** TTS 音频缓存键生成（SHA-1），独立于 Android Context，便于 JVM 单测。 */
+object TtsCacheKey {
+    fun keyOf(model: String, voice: String, text: String): String =
+        java.security.MessageDigest.getInstance("SHA-1")
+            .digest("$model|$voice|$text".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+}
+
 /**
  * OpenAI 兼容 TTS 端点。读取 [TtsConfigKeys]（本机 DataStore），POST
  * `/audio/speech`（`input` / `model` / `voice`），把返回的二进制流写入应用缓存目录，
@@ -55,7 +63,7 @@ class CloudTtsAssistant @Inject constructor(
         val model = prefs[TtsConfigKeys.MODEL]?.trim()?.takeIf { it.isNotBlank() } ?: DEFAULT_MODEL
 
         val cacheDir = java.io.File(context.cacheDir, CACHE_DIR).apply { mkdirs() }
-        val cacheKey = cacheKeyOf("$model|$voice|${text.take(MAX_CHARS)}")
+        val cacheKey = TtsCacheKey.keyOf(model, voice, text.take(MAX_CHARS))
         val cached = java.io.File(cacheDir, "$cacheKey.mp3")
         if (cached.exists() && cached.length() > 0) {
             cached.setLastModified(System.currentTimeMillis())
@@ -90,11 +98,6 @@ class CloudTtsAssistant @Inject constructor(
         trimCache(cacheDir)
         "file://${cached.absolutePath}"
     }
-
-    private fun cacheKeyOf(input: String): String =
-        java.security.MessageDigest.getInstance("SHA-1")
-            .digest(input.toByteArray())
-            .joinToString("") { "%02x".format(it) }
 
     private fun trimCache(dir: java.io.File) {
         val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".mp3") } ?: return

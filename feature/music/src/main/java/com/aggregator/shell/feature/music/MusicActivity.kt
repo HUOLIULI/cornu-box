@@ -22,7 +22,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Favorite
@@ -35,8 +34,6 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -64,6 +61,7 @@ import coil.compose.AsyncImage
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.media.lyric.LrcParser
 import com.aggregator.shell.core.source.api.MusicResult
+import com.aggregator.shell.core.ui.components.CardPeek
 import com.aggregator.shell.core.ui.components.EmptyState
 import com.aggregator.shell.core.ui.theme.AppTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -378,16 +376,14 @@ private fun formatTime(ms: Long): String {
     return "%02d:%02d".format(m, s)
 }
 
-/** 歌曲卡片。 */
+/** 歌曲卡片（PeekPro 黑金观感）。 */
 @Composable
 private fun SongCard(s: MusicResult, isPlaying: Boolean, onClick: () -> Unit) {
-    Card(
+    CardPeek(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 6.dp)
-            .clickable { onClick() },
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = RoundedCornerShape(14.dp)
+            .clickable { onClick() }
     ) {
         Row(Modifier.padding(12.dp).fillMaxWidth()) {
             AsyncImage(
@@ -400,7 +396,13 @@ private fun SongCard(s: MusicResult, isPlaying: Boolean, onClick: () -> Unit) {
             )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(s.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    s.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isPlaying) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "${s.artist} - ${s.album}",

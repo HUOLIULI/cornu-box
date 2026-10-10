@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -52,6 +51,8 @@ import com.aggregator.shell.core.media.epg.EpgSnapshot
 import com.aggregator.shell.core.media.player.PlayMediaItem
 import com.aggregator.shell.core.media.player.PlayerCore
 import com.aggregator.shell.core.source.api.VideoResult
+import com.aggregator.shell.core.ui.components.CardPeek
+import com.aggregator.shell.core.ui.components.PeekMediaCard
 import com.aggregator.shell.core.ui.theme.AppTheme
 import com.aggregator.shell.feature.video.ui.PlayerSurface
 import dagger.hilt.android.AndroidEntryPoint
@@ -323,7 +324,7 @@ private fun IptvList(
     LazyColumn(Modifier.fillMaxSize()) {
         items(channels) { c ->
             val selected = current?.url == c.url
-            Card(
+            CardPeek(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -335,10 +336,11 @@ private fun IptvList(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(c.name)
+                        Text(c.name, color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                         Text(
                             text = if (c.group.isNotBlank()) c.group else "直播",
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )
                     }
                     if (selected) {
@@ -472,15 +474,15 @@ private fun EpisodeSelector(state: PlayUiState, onSwitch: (Int, Int) -> Unit) {
 
 @Composable
 private fun VideoCard(title: String, subtitle: String, onClick: () -> Unit) {
-    Card(
+    CardPeek(
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp)
             .clickable(onClick = onClick)
     ) {
         Column(Modifier.padding(12.dp)) {
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall)
+            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.primary)
+            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         }
     }
 }
