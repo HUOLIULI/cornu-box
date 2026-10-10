@@ -23,7 +23,9 @@ import com.aggregator.shell.core.source.api.VideoEngine
 import com.aggregator.shell.core.source.api.VideoResult
 import com.aggregator.shell.core.source.engine.SourceBootstrap
 import com.aggregator.shell.core.source.search.VideoSearchRepository
+import com.aggregator.shell.core.source.search.VideoSearchRepositoryImpl
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,7 +78,8 @@ class VideoViewModel @Inject constructor(
     private val epgProvider: EpgProvider,
     private val playHistoryDao: PlayHistoryDao,
     private val favoritesDao: FavoritesDao,
-    private val searchHistoryDao: SearchHistoryDao
+    private val searchHistoryDao: SearchHistoryDao,
+    @ApplicationContext private val appContext: android.content.Context
 ) : ViewModel() {
 
     private val _play = MutableStateFlow(PlayUiState())
@@ -181,7 +184,7 @@ class VideoViewModel @Inject constructor(
             }
             _loadingResults.value = true
             val items = runCatching { videoSearchRepository.search(keyword, 1) }.getOrDefault(emptyList())
-            _results.value = VideoSearchRepository.toVideoResults(items)
+            _results.value = VideoSearchRepositoryImpl.toVideoResults(items)
             _loadingResults.value = false
         }
     }
@@ -457,7 +460,7 @@ class VideoViewModel @Inject constructor(
     private fun rememberLiveChannel(url: String) {
         lastLiveChannelUrl = url
         viewModelScope.launch {
-            appDataStore.edit { prefs ->
+            appContext.appDataStore.edit { prefs ->
                 prefs[keyLastLiveChannel] = url
             }
         }
@@ -465,7 +468,7 @@ class VideoViewModel @Inject constructor(
 
     private fun loadLastLiveChannel() {
         viewModelScope.launch {
-            val prefs = appDataStore.data.first()
+            val prefs = appContext.appDataStore.data.first()
             lastLiveChannelUrl = prefs[keyLastLiveChannel] ?: ""
         }
     }
