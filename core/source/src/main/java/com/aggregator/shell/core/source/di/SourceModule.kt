@@ -72,7 +72,9 @@ object SourceModule {
 
     @Provides
     @Singleton
-    fun provideAggregateVideoSearch(engines: List<VideoEngine>): AggregateVideoSearch =
+    fun provideAggregateVideoSearch(
+        @JvmSuppressWildcards engines: List<VideoEngine>
+    ): AggregateVideoSearch =
         AggregateVideoSearch(engines)
 
     @Provides

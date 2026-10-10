@@ -82,6 +82,10 @@ object CoreDataModule {
 
     @Provides
     @Singleton
+    fun provideSearchHistoryDao(db: AppDatabase): SearchHistoryDao = db.searchHistoryDao()
+
+    @Provides
+    @Singleton
     fun provideOkHttp(): OkHttpClient =
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
