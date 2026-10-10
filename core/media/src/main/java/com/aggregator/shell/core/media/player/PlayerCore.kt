@@ -90,7 +90,6 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
         if (player == null) {
             player = ExoPlayer.Builder(context)
                 .setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
-                .setUsePlatformMediaCodec(true)
                 .build().also { p ->
                     p.addListener(object : Player.Listener {
                         override fun onPlayerError(error: PlaybackException) {
@@ -99,11 +98,11 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
                         }
 
                         override fun onPositionDiscontinuity(
-                            oldPositionMs: Long,
-                            newPositionMs: Long,
+                            oldPosition: Player.PositionInfo,
+                            newPosition: Player.PositionInfo,
                             reason: Int
                         ) {
-                            currentPositionMs = newPositionMs
+                            currentPositionMs = newPosition.positionMs
                         }
 
                         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -149,7 +148,7 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     override fun setOnCompletionListener(listener: (() -> Unit)?) {
         val p = player
         if (p != null) {
-            p.removeListener(completionListenerAttached)
+            completionListenerAttached?.let { p.removeListener(it) }
             completionListener = listener
             completionListenerAttached = if (listener == null) null else object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
@@ -168,7 +167,7 @@ class ExoPlayerCore @javax.inject.Inject constructor() : PlayerCore {
     override fun setOnErrorListener(listener: ((PlaybackException) -> Unit)?) {
         val p = player
         if (p != null) {
-            p.removeListener(errorListenerAttached)
+            errorListenerAttached?.let { p.removeListener(it) }
             errorListener = listener
             errorListenerAttached = if (listener == null) null else object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {

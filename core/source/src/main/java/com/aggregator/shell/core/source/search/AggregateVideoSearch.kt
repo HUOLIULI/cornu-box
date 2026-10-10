@@ -3,6 +3,7 @@ package com.aggregator.shell.core.source.search
 import com.aggregator.shell.core.source.api.VideoEngine
 import com.aggregator.shell.core.source.api.VideoResult
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /**
