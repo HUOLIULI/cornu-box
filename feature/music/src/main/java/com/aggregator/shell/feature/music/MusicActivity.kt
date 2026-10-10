@@ -166,7 +166,9 @@ class MusicActivity : ComponentActivity() {
                                 onStop = {
                                     vm.stopPlayback()
                                     showPlayer = false
-                                }
+                                },
+                                onDesktopLyrics = { vm.toggleDesktopLyrics() },
+                                desktopLyricsOn = vm.desktopLyrics.collectAsState().value
                             )
                         } else {
                             Column(Modifier.fillMaxSize()) {
@@ -250,7 +252,9 @@ private fun PlayerScreen(
     onPrev: () -> Unit,
     onSeek: (Long) -> Unit,
     onFavorite: (MusicResult) -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onDesktopLyrics: () -> Unit = {},
+    desktopLyricsOn: Boolean = false
 ) {
     val current = ui.current ?: return
     val song = ui.queue.getOrNull(ui.queueIndex)
@@ -331,7 +335,7 @@ private fun PlayerScreen(
             }
         }
 
-        // 队列 + 操作
+        // 队列 + 桌面歌词 + 操作
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "队列 ${ui.queueIndex + 1}/${ui.queue.size}",
@@ -346,6 +350,10 @@ private fun PlayerScreen(
                     )
                 }
             }
+            AssistChip(
+                onClick = onDesktopLyrics,
+                label = { Text(if (desktopLyricsOn) "桌面歌词：开" else "桌面歌词：关") }
+            )
             TextButtonPlaceholder(onStop)
         }
     }

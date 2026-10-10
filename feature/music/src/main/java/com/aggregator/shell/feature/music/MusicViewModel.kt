@@ -68,6 +68,10 @@ class MusicViewModel @Inject constructor(
     private val _player = MutableStateFlow(MusicPlayerUi())
     val player: StateFlow<MusicPlayerUi> = _player.asStateFlow()
 
+    /** 桌面歌词浮层开关。开启后随 positionMs 推送到 [LyricsOverlayService]。 */
+    private val _desktopLyrics = MutableStateFlow(false)
+    val desktopLyrics: StateFlow<Boolean> = _desktopLyrics.asStateFlow()
+
     init {
         viewModelScope.launch { searchHistoryDao.recent().collectLatest { _searchHistory.value = it } }
         viewModelScope.launch { favoriteDao.byModule("MUSIC").collectLatest { _favorites.value = it } }
@@ -75,6 +79,7 @@ class MusicViewModel @Inject constructor(
         viewModelScope.launch {
             playerCore.positionMs.collect { pos ->
                 _player.value = _player.value.copy(positionMs = pos)
+                if (_desktopLyrics.value) pushDesktopLyric()
             }
         }
         viewModelScope.launch {
@@ -84,6 +89,41 @@ class MusicViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * 切换桌面歌词浮层：开启时启动 [LyricsOverlayService]（携带当前行），
+     * 之后随播放位置推送；关闭时 stopService 并释放引用。
+     */
+    fun toggleDesktopLyrics() {
+        val on = !_desktopLyrics.value
+        _desktopLyrics.value = on
+        if (on) {
+            val p = _player.value
+            val intent = android.content.Intent(app, com.aggregator.shell.core.media.LyricsOverlayService::class.java)
+                .putExtra(com.aggregator.shell.core.media.LyricsOverlayService.EXTRA_TITLE, p.current?.name.orEmpty())
+                .putExtra(com.aggregator.shell.core.media.LyricsOverlayService.EXTRA_LYRIC, currentLyricLine(p))
+            app.startForegroundService(intent)
+            pushDesktopLyric()
+        } else {
+            app.stopService(android.content.Intent(app, com.aggregator.shell.core.media.LyricsOverlayService::class.java))
+        }
+    }
+
+    /** 把当前歌词行推到浮层（同进程内直接调 Service 单例实例）。 */
+    private fun pushDesktopLyric() {
+        val p = _player.value
+        if (p.current == null) return
+        val line = currentLyricLine(p)
+        runCatching {
+            com.aggregator.shell.core.media.LyricsOverlayService.instance
+                ?.updateLyric(p.current?.name.orEmpty(), line)
+        }
+    }
+
+    private fun currentLyricLine(p: MusicPlayerUi): String {
+        val idx = com.aggregator.shell.core.media.lyric.LrcParser.lineAt(p.lyric, p.positionMs)
+        return p.lyric.lines.getOrNull(idx)?.text.orEmpty()
     }
 
     fun search(keyword: String) {

@@ -9,15 +9,17 @@ MediaShell（com.aggregator.shell）— 多源聚合阅读 / 影视 / 音乐壳�
   `CloudLlmAssistant` 走 OpenAI 兼容 `/chat/completions`（专用 OkHttp 客户端，读超时 120s）
   并支持自定义模型（`LlmConfigKeys.MODEL`，默认 `gpt-3.5-turbo`）；未配置时回退离线规则助手；
   LLM 配置键抽到 `core:common`（`LlmConfigKeys`）跨模块复用
-- 前台播放服务：`MediaPlaybackService`（`@AndroidEntryPoint`）只读播放状态更新通知，
-  与 `PlayerCore` 解耦；视频 / 音乐进入播放启服务、退出停止（`EXTRA_STOP_FOREGROUND`）
-- 「我的」聚合页：`feature:my` + `MyPageActivity` / `MyViewModel`，聚合收藏、播放历史、
-  搜索历史、书架、EPG 五类 Room 数据；首页新增「我的」导航项
-- 聚合搜索：`core:search`（`SearchAggregator` 并发检索 + 去重 + 记搜索历史）
-- 三引擎接 Room 源表：`SourceProvider` / `RoomSourceProvider` + `FallbackSourceProvider`，
-  订阅导入 → 引擎回流
-- Room Migration(1→2)：新增 `favorites` / `search_history` 表；`MigrationTest` 覆盖
-- 音乐播放页 `MusicActivity`（LRC 逐行高亮）+ `LrcParser`；阅读全链路 `ReaderViewModel`
+- TTS 听书：`core:ai` 新增 `TtsAssistant` / `CloudTtsAssistant`（OpenAI 兼容 `audio/speech`，
+  写本地 MP3 经 `PlayerCore` 播放）+ `TtsDelegatingAssistant` 动态切云端 / 离线；
+  `TtsConfigKeys` 抽到 `core:common`；阅读模块 `ReaderViewModel.speak()` + 设置页 TTS 配置区
+- 单文件书源（对标 DsPlayer/PeekPro 源脚本引擎）：`LegadoEngine` 支持 `mainJs` / `format=js`，
+  Rhino 沙盒执行脚本（`http` 桥 + 指令上限 + 超时），复用 `JsSandboxExecutor`，无新增 native
+- 桌面歌词浮层（对标 PeekPro `DesktopLyricsService`）：`core:media` 新增 `LyricsOverlayService`
+  （`WindowManager` 悬浮 + `SYSTEM_ALERT_WINDOW`），`MusicViewModel.toggleDesktopLyrics()`
+  随 `positionMs` + `LrcParser` 逐行刷新，音乐播放页加开关芯片
+- UI 布局优化：`MainActivity` 各 Tab 由空壳 BridgePanel 升级为能力 Hero + 能力芯片网格，
+  直观呈现 3 个对标 APK 吸纳的模块能力
+
 
 ### 优化 / 修复
 - `PlayUrlValidator` 语义修正：未知 / 空 scheme 直接拒绝，仅放行 http/https/rtmp/rtsp/mms

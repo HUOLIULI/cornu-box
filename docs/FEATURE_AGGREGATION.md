@@ -31,8 +31,23 @@ MediaShell 已有：三引擎（Legado / TVBox / LX Music）+ Room 源表 + `Rhi
 ## 未吸纳 / 说明
 
 - **T4 代理 / JAR 爬虫隔离**：涉及爬虫与代理转发，超出壳子范围，未实现。
-- **桌面歌词 / ISO 解码 / HDR**：依赖 native（FFmpeg/MDK），MediaShell 为纯 Kotlin 壳子
-  （ABI 仅依赖 androidx 自带 `.so`），暂不对标。
+- **ISO 解码 / HDR 渲染 / 桌面歌词之外的 PeekPro 解码矩阵**：ISO/HDR 依赖 native（FFmpeg/MDK），
+  MediaShell 为纯 Kotlin 壳子（ABI 仅依赖 androidx 自带 `.so`），未对标。
+  **桌面歌词浮层已吸纳**（见下方新增）。
 - **RSS / 漫画 / 自动化**：Legado 专有重模块，非本次壳子聚合目标。
+
+## 桌面歌词浮层（吸纳 PeekPro `DesktopLyricsService`）
+
+- `core:media` 新增 `LyricsOverlayService`：`WindowManager` 桌面悬浮歌词，
+  随 `PlayerCore.positionMs` + `LrcParser.lineAt` 逐行刷新；需 `SYSTEM_ALERT_WINDOW`
+  权限（已加 manifest + `dataSync` foregroundServiceType），未授权时静默降级。
+- `MusicViewModel.toggleDesktopLyrics()`：开关浮层，同进程经 `LyricsOverlayService.instance`
+  直推当前行；`MusicActivity` 播放页加「桌面歌词」开关芯片。
+
+## UI 布局优化
+
+- `MainActivity` 各 Tab 由「空壳 Card + 进入按钮」升级为「能力 Hero + 能力芯片网格」：
+  每模块顶部展示对标定位（点播/短剧/IPTV/桌面歌词/TTS 等），下方以 `AssistChip` 列出
+  该模块吸纳的具体能力，替代原先无信息量的 BridgePanel。
 
 所有新增保持"壳子"约束：不内置任何源 / TTS 凭据，端点与 Key 仅存本机 DataStore。
