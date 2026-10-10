@@ -25,8 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.NextTrack
-import androidx.compose.material.icons.automirrored.filled.PreviousTrack
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
@@ -348,7 +348,7 @@ class MusicActivity : ComponentActivity() {
                     )
                 }
                 IconButton(onClick = onPrev) {
-                    Icon(Icons.AutoMirrored.Filled.PreviousTrack, contentDescription = "上一曲")
+                    Icon(Icons.Default.FastRewind, contentDescription = "上一曲")
                 }
                 IconButton(onClick = onPlayPause) {
                     Icon(
@@ -357,7 +357,7 @@ class MusicActivity : ComponentActivity() {
                     )
                 }
                 IconButton(onClick = onNext) {
-                    Icon(Icons.AutoMirrored.Filled.NextTrack, contentDescription = "下一曲")
+                    Icon(Icons.Default.FastForward, contentDescription = "下一曲")
                 }
             }
         }
