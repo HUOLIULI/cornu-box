@@ -205,7 +205,6 @@ class VideoActivity : ComponentActivity() {
                                     onSearch = { keyword -> vm.refresh(keyword) },
                                     onHistoryRemove = { q -> vm.removeSearchHistory(q) },
                                     onHistoryClear = { vm.clearSearchHistory() },
-                                    onHistoryClear = { vm.clearSearchHistory() },
                                     onItemClick = { vm.onItemClicked(it) }
                                 )
                                 tabIndex == 1 -> DramaTab(
@@ -318,20 +317,6 @@ private fun VodoTab(
                     )
                 }
             }
-                    }
-                }
-                Text(
-                    text = "清空",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                        .clickable { onHistoryClear() }
-                )
-            }
-        }
 
         Spacer(Modifier.height(4.dp))
 
@@ -355,6 +340,35 @@ private fun VodoTab(
                 }
             }
         }
+    }
+}
+
+/** 短剧 Tab：加载态 / 空态包装，正常时渲染竖屏翻页播放器。 */
+@Composable
+private fun DramaTab(
+    episodes: List<DramaEpisode>,
+    loading: Boolean,
+    onSwitch: (Int) -> Unit,
+    player: PlayerCore,
+    danmaku: List<DanmakuItem>
+) {
+    when {
+        loading && episodes.isEmpty() -> Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) { CircularProgressIndicator() }
+
+        episodes.isEmpty() -> Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) { Text("暂无短剧") }
+
+        else -> DramaPager(
+            episodes = episodes,
+            onSwitch = onSwitch,
+            player = player,
+            danmaku = danmaku
+        )
     }
 }
 
@@ -383,8 +397,10 @@ private fun DramaPager(
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 VerticalVideo(ep = episodes[page], player = player, danmaku = danmaku)
+                }
             }
         }
+
         Spacer(Modifier.height(4.dp))
         Text(
             text = "${pagerState.currentPage + 1} / ${episodes.size} · ${episodes[pagerState.currentPage].title}",
