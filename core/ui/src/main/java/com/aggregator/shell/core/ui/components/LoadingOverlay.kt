@@ -1,7 +1,10 @@
 package com.aggregator.shell.core.ui.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -31,14 +34,14 @@ fun LoadingOverlay(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        androidx.compose.foundation.layout.Column(
+                        Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.padding(16.dp)
                         ) {
                             CircularProgressIndicator()
                             if (message != null) {
-                                androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
-                                androidx.compose.material3.Text(
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
                                     text = message,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onBackground
