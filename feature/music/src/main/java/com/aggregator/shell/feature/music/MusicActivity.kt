@@ -25,8 +25,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.SkipNext
-import androidx.compose.material.icons.automirrored.filled.SkipPrevious
+import androidx.compose.material.icons.automirrored.filled.NextTrack
+import androidx.compose.material.icons.automirrored.filled.PreviousTrack
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
@@ -154,9 +154,10 @@ class MusicActivity : ComponentActivity() {
                 }
 
                 // 播放控制条：当前歌曲 + 播放/暂停/上一曲/下一曲
-                if (playState.current != null) {
+                val currentSong = playState.current
+                if (currentSong != null) {
                     MusicPlayerBar(
-                        song = playState.current,
+                        song = currentSong,
                         playing = playState.playing,
                         onPlayPause = {
                             if (playState.playing) model.pause(context) else model.resume(context)
@@ -187,14 +188,14 @@ class MusicActivity : ComponentActivity() {
                         )
 
                         // 搜索历史标签
-                        if (searchHistory.value.isNotEmpty()) {
+                        if (searchHistory.isNotEmpty()) {
                             Row(
                                 Modifier
                                     .horizontalScroll(rememberScrollState())
                                     .padding(horizontal = 12.dp, vertical = 4.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                searchHistory.value.forEach { h ->
+                                searchHistory.forEach { h ->
                                     Box(
                                         Modifier
                                             .clip(RoundedCornerShape(20.dp))
@@ -347,7 +348,7 @@ class MusicActivity : ComponentActivity() {
                     )
                 }
                 IconButton(onClick = onPrev) {
-                    Icon(Icons.AutoMirrored.Filled.SkipPrevious, contentDescription = "上一曲")
+                    Icon(Icons.AutoMirrored.Filled.PreviousTrack, contentDescription = "上一曲")
                 }
                 IconButton(onClick = onPlayPause) {
                     Icon(
@@ -356,7 +357,7 @@ class MusicActivity : ComponentActivity() {
                     )
                 }
                 IconButton(onClick = onNext) {
-                    Icon(Icons.AutoMirrored.Filled.SkipNext, contentDescription = "下一曲")
+                    Icon(Icons.AutoMirrored.Filled.NextTrack, contentDescription = "下一曲")
                 }
             }
         }

@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -273,13 +274,13 @@ private fun VodoTab(
 
         // 搜索历史标签
             if (searchHistory.isNotEmpty()) {
-                Row(
+                LazyRow(
                     Modifier
-                        .horizontalScroll(rememberScrollState())
+                        .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    searchHistory.forEach { h ->
+                    items(searchHistory) { h ->
                         Box(
                             Modifier
                                 .clip(RoundedCornerShape(20.dp))
@@ -305,16 +306,18 @@ private fun VodoTab(
                             }
                         }
                     }
-                    Text(
-                        text = "清空",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                            .clickable { onHistoryClear() }
-                    )
+                    item {
+                        Text(
+                            text = "清空",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.error.copy(alpha = 0.1f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .clickable { onHistoryClear() }
+                        )
+                    }
                 }
             }
 
@@ -399,7 +402,6 @@ private fun DramaPager(
                 VerticalVideo(ep = episodes[page], player = player, danmaku = danmaku)
                 }
             }
-        }
 
         Spacer(Modifier.height(4.dp))
         Text(

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.os.IBinder
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
@@ -91,6 +92,8 @@ class MusicNotificationService : Service() {
         super.onCreate()
         createNotificationChannel()
     }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 
     private fun skipToNext() {
         if (currentIndex < currentQueue.size - 1) {
